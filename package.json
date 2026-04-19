@@ -1,0 +1,19 @@
+{
+  "name": "mtg-details",
+  "version": "1.0.0",
+  "scripts": {
+    "import-cards": "bun src/import-cards.ts",
+    "import-inventory": "bun src/import-inventory.ts",
+    "search": "bun src/search.ts",
+    "ui": "bun src/server.ts"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/papaparse": "^5.3.14",
+    "bun-types": "latest"
+  }
+}

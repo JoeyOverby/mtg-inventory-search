@@ -1,0 +1,8 @@
+node_modules/
+mtg.db
+mtg.db-wal
+mtg.db-shm
+allCards/default-cards-2*.json
+
+
+inventory/Cards - 20*.csv

@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MTG Collection Search</title>
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0ede8;
+      color: #1a1a1a;
+      min-height: 100vh;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    header {
+      background: #1a1a2e;
+      color: #e8e8e8;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
+    header .subtitle { font-size: 0.8rem; color: #888; margin-left: auto; }
+
+    /* ── Main layout ───────────────────────────────────────────────────────── */
+    .container { max-width: 1140px; margin: 0 auto; padding: 20px; }
+
+    /* ── Search panel ──────────────────────────────────────────────────────── */
+    .search-panel {
+      background: white;
+      border-radius: 10px;
+      padding: 22px 24px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+    }
+
+    /* Two-column grid; specific sections span full width */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 20px;
+    }
+
+    .full-width { grid-column: 1 / -1; }
+
+    /* ── Field groups ──────────────────────────────────────────────────────── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      padding: 8px 10px;
+      border: 1.5px solid #ddd;
+      border-radius: 5px;
+      font-size: 0.88rem;
+      color: #111;
+      background: white;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74,144,217,0.15);
+    }
+
+    .hint {
+      font-size: 0.7rem;
+      color: #999;
+      line-height: 1.3;
+    }
+
+    /* ── Section dividers ──────────────────────────────────────────────────── */
+    .section-label {
+      grid-column: 1 / -1;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 4px;
+      margin-top: 4px;
+    }
+
+    /* ── Color picker ──────────────────────────────────────────────────────── */
+    /*
+     * Three rows (Any / All / Not) each with 6 color toggle buttons.
+     * Clicking a button toggles it into the "selected" state and updates
+     * a hidden input whose value the form reads on submit.
+     */
+    .color-section {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .color-row-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #888;
+      width: 56px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+
+    .color-btn-group { display: flex; gap: 6px; }
+
+    .color-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 0.8rem;
+      position: relative;         /* needed for the ✕ overlay on "Not" buttons */
+      transition: transform 0.1s, filter 0.15s, box-shadow 0.15s;
+      /* Each color's background is set inline via data-color (see JS below) */
+    }
+
+    /* MTG mana colors */
+    .color-btn[data-color="W"] { background: #f5f0d8; color: #6b5500; border-color: #c8a951; }
+    .color-btn[data-color="U"] { background: #1d7ed8; color: white;   border-color: #1255a0; }
+    .color-btn[data-color="B"] { background: #2d2d2d; color: #ccc;    border-color: #111;    }
+    .color-btn[data-color="R"] { background: #d3202a; color: white;   border-color: #9e1018; }
+    .color-btn[data-color="G"] { background: #00733e; color: white;   border-color: #004d28; }
+    .color-btn[data-color="C"] { background: #9baab7; color: white;   border-color: #6a7f8e; }
+
+    /* Unselected: desaturate and fade so only selected colors pop */
+    .color-btn:not(.selected) {
+      filter: grayscale(0.55) opacity(0.4);
+    }
+    .color-btn.selected {
+      filter: none;
+      transform: scale(1.08);
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.25);
+    }
+    .color-btn:hover { transform: scale(1.12); }
+
+    /*
+     * "Not" selected buttons get a small red ✕ badge in the corner
+     * to make it visually clear these are exclusions, not inclusions.
+     */
+    .color-row[data-group="colors-not"] .color-btn.selected::after,
+    .color-row[data-group="ci-not"]     .color-btn.selected::after {
+      content: "✕";
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: #d32f2f;
+      color: white;
+      border-radius: 50%;
+      width: 14px;
+      height: 14px;
+      font-size: 8px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    /* ── Inline field rows (CMC, P/T) ──────────────────────────────────────── */
+    .inline-row {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .inline-row .field { flex: 1; min-width: 90px; }
+    .inline-row .field input,
+    .inline-row .field select { width: 100%; }
+
+    /* ── Form actions ──────────────────────────────────────────────────────── */
+    .form-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .btn {
+      padding: 9px 22px;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .btn-primary   { background: #1d7ed8; color: white; }
+    .btn-primary:hover { background: #1565c0; }
+    .btn-secondary { background: #eee; color: #444; }
+    .btn-secondary:hover { background: #ddd; }
+
+    #result-summary {
+      margin-left: auto;
+      font-size: 0.82rem;
+      color: #888;
+    }
+
+    /* ── Results ───────────────────────────────────────────────────────────── */
+    #results { margin-top: 20px; }
+
+    /* Individual card result */
+    .result-card {
+      background: white;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      display: flex;
+      gap: 14px;
+      transition: box-shadow 0.15s;
+    }
+    .result-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.12); }
+
+    /* Card thumbnail — we swap /normal/ → /small/ in JS to fetch the 146×204 version */
+    .card-thumb {
+      width: 60px;
+      height: 84px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #e8e8e8;
+    }
+    .card-thumb-placeholder {
+      width: 60px;
+      height: 84px;
+      border-radius: 4px;
+      background: #e8e8e8;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      color: #aaa;
+      text-align: center;
+    }
+
+    .card-body { flex: 1; min-width: 0; }
+
+    .card-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 3px;
+    }
+    .card-name  { font-size: 0.97rem; font-weight: 700; }
+    .card-set   { font-size: 0.72rem; color: #999; font-family: monospace; }
+
+    /* Rarity color coding */
+    .rarity-C { color: #999; font-size: 0.72rem; }
+    .rarity-U { color: #5b7fa0; font-size: 0.72rem; }
+    .rarity-R { color: #c07020; font-size: 0.72rem; font-weight: 700; }
+    .rarity-M { color: #c04000; font-size: 0.72rem; font-weight: 700; }
+
+    .card-meta {
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Colored dot for each mana color — same palette as the picker buttons */
+    .color-pip {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.15);
+      vertical-align: middle;
+    }
+
+    .card-type {
+      font-size: 0.8rem;
+      font-style: italic;
+      color: #555;
+      margin-bottom: 6px;
+    }
+
+    /* Oracle text in a subtle inset block */
+    .card-oracle {
+      font-size: 0.78rem;
+      color: #333;
+      line-height: 1.5;
+      background: #f8f7f4;
+      border-left: 3px solid #ddd;
+      padding: 5px 10px;
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 7px;
+      white-space: pre-wrap;   /* preserve line breaks from card text */
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.76rem;
+      color: #777;
+    }
+
+    /* ── Keyword picker ────────────────────────────────────────────────────── */
+    /*
+     * Three side-by-side panels: AND / OR / NOT.
+     * Each has a filter input, a scrollable checkbox list grouped into
+     * "Keyword Abilities" and "Ability Words", and a summary line.
+     */
+    .kw-pickers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .kw-picker {
+      border: 1.5px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .kw-picker-label {
+      padding: 7px 10px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: #f8f8f8;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* AND / OR / NOT color-coded badge next to the picker title */
+    .kw-logic-badge {
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+    .kw-and { background: #dbeafe; color: #1d4ed8; }
+    .kw-or  { background: #dcfce7; color: #15803d; }
+    .kw-not { background: #fee2e2; color: #b91c1c; }
+
+    .kw-filter {
+      margin: 6px 8px 0;
+      padding: 5px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      width: calc(100% - 16px);
+    }
+    .kw-filter:focus {
+      outline: none;
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 2px rgba(74,144,217,0.15);
+    }
+
+    /* Scrollable list of checkboxes */
+    .kw-list {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 210px;
+      padding: 4px 0;
+      margin-top: 4px;
+    }
+
+    /* Section headers within the list */
+    .kw-group-label {
+      padding: 3px 10px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      background: #fafafa;
+      border-top: 1px solid #f0f0f0;
+      border-bottom: 1px solid #f0f0f0;
+      margin-top: 2px;
+    }
+
+    /* Individual checkbox rows */
+    .kw-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      color: #333;
+      cursor: pointer;
+      user-select: none;
+    }
+    .kw-item:hover { background: #f5f5f5; }
+    .kw-item.kw-item-checked { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+
+    .kw-item input[type="checkbox"] {
+      /* Keep checkbox tight, don't inherit the large input styles above */
+      padding: 0;
+      border: none;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .kw-empty {
+      padding: 10px;
+      font-size: 0.78rem;
+      color: #bbb;
+      text-align: center;
+    }
+
+    /* Comma-separated list of selected items shown below the list */
+    .kw-selected-summary {
+      padding: 5px 10px;
+      font-size: 0.72rem;
+      color: #4a90d9;
+      font-weight: 600;
+      border-top: 1px solid #f0f0f0;
+      min-height: 24px;
+      word-break: break-word;
+    }
+
+    @media (max-width: 780px) {
+      .kw-pickers { grid-template-columns: 1fr; }
+    }
+
+    /* Keyword ability badge */
+    .kw-badge {
+      background: #eef2ff;
+      color: #3949ab;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    /* Green badge shown only for owned cards */
+    .owned-badge {
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    /* ── State messages ────────────────────────────────────────────────────── */
+    .state-msg {
+      text-align: center;
+      padding: 32px;
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+
+    .error-box {
+      background: #fff3f3;
+      border: 1px solid #fcc;
+      color: #b00;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    /* ── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 680px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .full-width, .color-section, .inline-row,
+      .section-label, .form-actions { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <rect x="2" y="2" width="16" height="16" rx="2" fill="#e94560"/>
+    <path d="M6 10h8M10 6v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+  <h1>MTG Collection Search</h1>
+  <span class="subtitle" id="db-status">Loading…</span>
+</header>
+
+<div class="container">
+  <div class="search-panel">
+    <form class="form-grid" id="search-form" autocomplete="off">
+
+      <!-- ── Text filters ───────────────────────────────────────────────── -->
+      <div class="field">
+        <label for="f-name">Name</label>
+        <input type="text" id="f-name" name="name" placeholder="e.g. Goblin Piker">
+      </div>
+
+      <div class="field">
+        <label for="f-type">Type line</label>
+        <input type="text" id="f-type" name="type" placeholder="e.g. Goblin, Creature, Instant">
+      </div>
+
+      <div class="field full-width">
+        <label for="f-text">Oracle text (full-text search)</label>
+        <input type="text" id="f-text" name="text"
+               placeholder='"goblin token" OR "goblin creature token"'>
+        <span class="hint">
+          Phrases in quotes · AND / OR / NOT · prefix* · searches name, type &amp; oracle text
+        </span>
+      </div>
+
+      <!-- ── Color picker ───────────────────────────────────────────────── -->
+      <span class="section-label">Colors</span>
+
+      <!--
+        Each .color-row has a data-group attribute.
+        Clicking a button toggles .selected on that button and
+        updates the corresponding hidden input (e.g. #hidden-colors-any).
+        The JS section below handles all the toggle logic.
+      -->
+      <div class="color-section">
+        <div class="color-row" data-group="colors-any">
+          <span class="color-row-label">Any of</span>
+          <div class="color-btn-group">
+            <button type="button" class="color-btn" data-color="W">W</button>
+            <button type="button" class="color-btn" data-color="U">U</button>
+            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="R">R</button>
+            <button type="button" class="color-btn" data-color="G">G</button>
+            <button type="button" class="color-btn" data-color="C">C</button>
+          </div>
+          <input type="hidden" id="hidden-colors-any" name="colors-any">
+        </div>
+
+        <div class="color-row" data-group="colors-all">
+          <span class="color-row-label">All of</span>
+          <div class="color-btn-group">
+            <button type="button" class="color-btn" data-color="W">W</button>
+            <button type="button" class="color-btn" data-color="U">U</button>
+            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="R">R</button>
+            <button type="button" class="color-btn" data-color="G">G</button>
+            <button type="button" class="color-btn" data-color="C">C</button>
+          </div>
+          <input type="hidden" id="hidden-colors-all" name="colors-all">
+        </div>
+
+        <div class="color-row" data-group="colors-not">
+          <span class="color-row-label">Exclude</span>
+          <div class="color-btn-group">
+            <button type="button" class="color-btn" data-color="W">W</button>
+            <button type="button" class="color-btn" data-color="U">U</button>
+            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="R">R</button>
+            <button type="button" class="color-btn" data-color="G">G</button>
+            <button type="button" class="color-btn" data-color="C">C</button>
+          </div>
+          <input type="hidden" id="hidden-colors-not" name="colors-not">
+        </div>
+      </div>
+
+      <!-- ── Color identity (Commander) ────────────────────────────────── -->
+      <span class="section-label">Color Identity <span style="font-weight:400;font-style:italic">(Commander)</span></span>
+
+      <div class="color-section">
+        <div class="color-row" data-group="ci-any">
+          <span class="color-row-label">Any of</span>
+          <div class="color-btn-group">
+            <button type="button" class="color-btn" data-color="W">W</button>
+            <button type="button" class="color-btn" data-color="U">U</button>
+            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="R">R</button>
+            <button type="button" class="color-btn" data-color="G">G</button>
+            <button type="button" class="color-btn" data-color="C">C</button>
+          </div>
+          <input type="hidden" id="hidden-ci-any" name="ci-any">
+        </div>
+
+        <div class="color-row" data-group="ci-not">
+          <span class="color-row-label">Exclude</span>
+          <div class="color-btn-group">
+            <button type="button" class="color-btn" data-color="W">W</button>
+            <button type="button" class="color-btn" data-color="U">U</button>
+            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="R">R</button>
+            <button type="button" class="color-btn" data-color="G">G</button>
+            <button type="button" class="color-btn" data-color="C">C</button>
+          </div>
+          <input type="hidden" id="hidden-ci-not" name="ci-not">
+        </div>
+      </div>
+
+      <!-- ── Keyword pickers ───────────────────────────────────────────── -->
+      <!--
+        Three filterable checkbox panels: AND / OR (ANY) / NOT.
+        The list is populated from /api/keywords on load.
+        Keyword abilities (Flying, Haste…) use the card_keywords table.
+        Ability words (Landfall, Morbid…) fall back to oracle_text LIKE — the
+        server routes them automatically; the user doesn't need to know.
+      -->
+      <span class="section-label">Keywords &amp; Ability Words</span>
+
+      <div class="full-width kw-pickers">
+
+        <div class="kw-picker" id="kw-picker-and">
+          <div class="kw-picker-label">
+            Has ALL of these <span class="kw-logic-badge kw-and">AND</span>
+          </div>
+          <input type="text" class="kw-filter" placeholder="Filter abilities…">
+          <div class="kw-list"></div>
+          <div class="kw-selected-summary"></div>
+          <!-- Hidden input carries the comma-separated selection to the form -->
+          <input type="hidden" name="keyword">
+        </div>
+
+        <div class="kw-picker" id="kw-picker-any">
+          <div class="kw-picker-label">
+            Has ANY of these <span class="kw-logic-badge kw-or">OR</span>
+          </div>
+          <input type="text" class="kw-filter" placeholder="Filter abilities…">
+          <div class="kw-list"></div>
+          <div class="kw-selected-summary"></div>
+          <input type="hidden" name="keyword-any">
+        </div>
+
+        <div class="kw-picker" id="kw-picker-not">
+          <div class="kw-picker-label">
+            Has NONE of these <span class="kw-logic-badge kw-not">NOT</span>
+          </div>
+          <input type="text" class="kw-filter" placeholder="Filter abilities…">
+          <div class="kw-list"></div>
+          <div class="kw-selected-summary"></div>
+          <input type="hidden" name="keyword-not">
+        </div>
+
+      </div>
+
+      <!-- ── CMC, P/T, Rarity, Format ──────────────────────────────────── -->
+      <div class="inline-row">
+        <div class="field">
+          <label for="f-cmc">CMC exact</label>
+          <input type="number" id="f-cmc" name="cmc" min="0" step="1" placeholder="—">
+        </div>
+        <div class="field">
+          <label for="f-cmc-min">CMC min</label>
+          <input type="number" id="f-cmc-min" name="cmc-min" min="0" step="1" placeholder="—">
+        </div>
+        <div class="field">
+          <label for="f-cmc-max">CMC max</label>
+          <input type="number" id="f-cmc-max" name="cmc-max" min="0" step="1" placeholder="—">
+        </div>
+        <div class="field">
+          <label for="f-rarity">Rarity</label>
+          <select id="f-rarity" name="rarity">
+            <option value="">Any</option>
+            <option value="common">Common</option>
+            <option value="uncommon">Uncommon</option>
+            <option value="rare">Rare</option>
+            <option value="mythic">Mythic</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-format">Format legal</label>
+          <input type="text" id="f-format" name="format" placeholder="commander">
+        </div>
+        <div class="field">
+          <label for="f-layout">Layout</label>
+          <input type="text" id="f-layout" name="layout" placeholder="token, transform…">
+        </div>
+      </div>
+
+      <div class="inline-row">
+        <div class="field">
+          <label for="f-power">Power ≥</label>
+          <input type="number" id="f-power" name="power-min" min="0" step="1" placeholder="—">
+        </div>
+        <div class="field">
+          <label for="f-toughness">Toughness ≥</label>
+          <input type="number" id="f-toughness" name="toughness-min" min="0" step="1" placeholder="—">
+        </div>
+        <div class="field" style="justify-content:flex-end; padding-bottom:2px">
+          <label style="margin-bottom:8px">&nbsp;</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;
+                        font-weight:600; color:#333; text-transform:none; letter-spacing:0">
+            <input type="checkbox" id="f-owned" name="owned" style="width:16px;height:16px">
+            Owned cards only
+          </label>
+        </div>
+        <div class="field">
+          <label for="f-limit">Max results</label>
+          <select id="f-limit" name="limit">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ── Actions ───────────────────────────────────────────────────── -->
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="button" class="btn btn-secondary" id="clear-btn">Clear all</button>
+        <span id="result-summary"></span>
+      </div>
+
+    </form>
+  </div>
+
+  <!-- Results injected here by JS -->
+  <div id="results"></div>
+</div>
+
+<script>
+  // ── Color button state ────────────────────────────────────────────────────
+  //
+  // Each color picker group (colors-any, colors-all, etc.) maintains a Set
+  // of currently selected color letters. When a button is clicked, we toggle
+  // it in the Set and sync the corresponding hidden <input> so the form
+  // submission picks it up as a comma-separated value.
+
+  // Map of group name → Set of selected colors
+  const colorState = {
+    "colors-any": new Set(),
+    "colors-all": new Set(),
+    "colors-not": new Set(),
+    "ci-any":     new Set(),
+    "ci-not":     new Set(),
+  };
+
+  // Wire up all color buttons
+  document.querySelectorAll(".color-row").forEach(row => {
+    const group = row.dataset.group;
+    if (!colorState[group]) return;
+
+    row.querySelectorAll(".color-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const color = btn.dataset.color;
+        // Toggle: add if absent, remove if present
+        if (colorState[group].has(color)) {
+          colorState[group].delete(color);
+          btn.classList.remove("selected");
+        } else {
+          colorState[group].add(color);
+          btn.classList.add("selected");
+        }
+        // Sync the hidden input so the form serializes it correctly
+        const hidden = document.getElementById(`hidden-${group}`);
+        hidden.value = [...colorState[group]].join(",");
+      });
+    });
+  });
+
+  // ── Keyword picker ────────────────────────────────────────────────────────
+  //
+  // Each of the three panels (AND / ANY / NOT) is an independent picker instance.
+  // We store a registry so the clear button can reset all of them at once.
+  const kwPickerResetFns = [];
+
+  /**
+   * Wires up one keyword picker panel.
+   *
+   * @param container  - the .kw-picker element
+   * @param keywords   - true keyword abilities from the DB (e.g. "Flying")
+   * @param abilityWords - ability words from the hardcoded list (e.g. "Landfall")
+   */
+  function initKeywordPicker(container, keywords, abilityWords) {
+    const filterInput = container.querySelector(".kw-filter");
+    const list        = container.querySelector(".kw-list");
+    const summary     = container.querySelector(".kw-selected-summary");
+    const hidden      = container.querySelector("input[type='hidden']");
+
+    // Tracks which abilities are checked in this panel
+    const selected = new Set();
+
+    // Rebuild the visible checkbox list based on the current filter string
+    function render() {
+      const q = filterInput.value.toLowerCase();
+      list.innerHTML = "";
+
+      const filteredKws = keywords.filter(k => k.toLowerCase().includes(q));
+      const filteredAws = abilityWords.filter(w => w.toLowerCase().includes(q));
+
+      if (!filteredKws.length && !filteredAws.length) {
+        list.innerHTML = '<div class="kw-empty">No matches</div>';
+        return;
+      }
+
+      // Keyword Abilities group
+      if (filteredKws.length) {
+        list.append(makeGroupLabel("Keyword Abilities"));
+        filteredKws.forEach(kw => list.append(makeItem(kw)));
+      }
+
+      // Ability Words group — these get routed to oracle_text LIKE on the server
+      if (filteredAws.length) {
+        list.append(makeGroupLabel("Ability Words (Landfall, Morbid, etc.)"));
+        filteredAws.forEach(aw => list.append(makeItem(aw)));
+      }
+    }
+
+    function makeGroupLabel(text) {
+      const el = document.createElement("div");
+      el.className = "kw-group-label";
+      el.textContent = text;
+      return el;
+    }
+
+    function makeItem(name) {
+      const label = document.createElement("label");
+      label.className = "kw-item" + (selected.has(name) ? " kw-item-checked" : "");
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selected.has(name);
+
+      cb.addEventListener("change", () => {
+        if (cb.checked) selected.add(name);
+        else            selected.delete(name);
+        // Re-render so the row background updates immediately
+        render();
+        syncHidden();
+      });
+
+      label.appendChild(cb);
+      label.append("\u00a0" + name); // non-breaking space before text
+      return label;
+    }
+
+    function syncHidden() {
+      hidden.value = [...selected].join(",");
+      // Show a comma-separated summary of what's selected, or blank if nothing
+      summary.textContent = selected.size
+        ? [...selected].join(", ")
+        : "";
+    }
+
+    // Re-filter list as the user types in the search box
+    filterInput.addEventListener("input", render);
+
+    // Expose a reset function for the "Clear all" button
+    function reset() {
+      selected.clear();
+      filterInput.value = "";
+      syncHidden();
+      render();
+    }
+
+    kwPickerResetFns.push(reset);
+    render(); // initial render (list may be empty until keywords load)
+  }
+
+  // ── Curated ability lists ─────────────────────────────────────────────────
+  //
+  // Using the live DB list turned out to include every obscure keyword in
+  // Scryfall (e.g. "Catch" from split cards). These curated arrays cover
+  // what players actually search for.
+  //
+  // True keyword abilities — queried via the card_keywords table.
+  const CURATED_KEYWORDS = [
+    "Affinity", "Bestow", "Buyback", "Cascade", "Convoke", "Crew",
+    "Cycling", "Deathtouch", "Defender", "Delve", "Double Strike",
+    "Emerge", "Equip", "Escape", "Evoke", "First Strike", "Flash",
+    "Flashback", "Flying", "Foretell", "Haste", "Hexproof",
+    "Indestructible", "Infect", "Intimidate", "Kicker", "Lifelink",
+    "Madness", "Menace", "Modular", "Morph", "Mutate", "Overload",
+    "Partner", "Persist", "Protection", "Prowess", "Reach", "Shroud",
+    "Trample", "Undying", "Unearth", "Vigilance", "Ward", "Wither",
+  ];
+
+  // Ability words — no rules meaning, searched via oracle_text LIKE.
+  // The server routes these automatically; the picker treats them the same.
+  const CURATED_ABILITY_WORDS = [
+    "Battalion", "Cohort", "Constellation", "Delirium", "Fateful hour",
+    "Ferocious", "Formidable", "Heroic", "Imprint", "Inspired",
+    "Kinship", "Landfall", "Magecraft", "Metalcraft", "Morbid",
+    "Raid", "Revolt", "Spell mastery", "Threshold", "Undergrowth",
+  ];
+
+  /** Initialises all three keyword picker panels with the curated lists. */
+  function loadKeywords() {
+    document.querySelectorAll(".kw-picker").forEach(container => {
+      initKeywordPicker(container, CURATED_KEYWORDS, CURATED_ABILITY_WORDS);
+    });
+  }
+
+  // ── Color pip rendering ───────────────────────────────────────────────────
+  const COLOR_BG = {
+    W: "#f5f0d8", U: "#1d7ed8", B: "#2d2d2d",
+    R: "#d3202a", G: "#00733e", C: "#9baab7",
+  };
+
+  function renderColorPips(colorsJson) {
+    const colors = JSON.parse(colorsJson || "[]");
+    if (!colors.length) return '<span style="color:#bbb">Colorless</span>';
+    return colors
+      .map(c => `<span class="color-pip" style="background:${COLOR_BG[c] || "#ccc"}" title="${c}"></span>`)
+      .join(" ");
+  }
+
+  // ── Card rendering ────────────────────────────────────────────────────────
+  const RARITY_ABBR  = { common: "C", uncommon: "U", rare: "R", mythic: "M" };
+  const RARITY_CLASS = { common: "rarity-C", uncommon: "rarity-U", rare: "rarity-R", mythic: "rarity-M" };
+
+  // Prevent XSS when inserting user-controlled or DB strings into innerHTML
+  function esc(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function renderCard(card) {
+    const keywords    = JSON.parse(card.keywords_json || "[]");
+    const rarityAbbr  = RARITY_ABBR[card.rarity]  ?? "?";
+    const rarityClass = RARITY_CLASS[card.rarity] ?? "";
+    const pt          = card.power ? ` · ${card.power}/${card.toughness}` : "";
+
+    // Scryfall stores /normal/ images (~400KB each).
+    // Swapping the path segment to /small/ gives us the 146×204 thumbnail (~16KB)
+    // which is all we need at display size, and loads much faster.
+    const imgHtml = card.image_normal
+      ? `<img class="card-thumb"
+              src="${card.image_normal.replace("/normal/", "/small/")}"
+              alt="${esc(card.name)}"
+              loading="lazy">`  // lazy: only fetch when scrolled into view
+      : `<div class="card-thumb-placeholder">No image</div>`;
+
+    // Keywords as small badges; empty array = no badges rendered
+    const kwHtml = keywords.length
+      ? `<div style="display:flex;gap:4px;flex-wrap:wrap">
+           ${keywords.map(k => `<span class="kw-badge">${esc(k)}</span>`).join("")}
+         </div>`
+      : "";
+
+    // Only shown when the card is in inventory
+    const ownedHtml = card.quantity != null
+      ? `<span class="owned-badge">★ ${card.quantity}× ${esc(card.inv_condition ?? "")}</span>`
+      : "";
+
+    const priceHtml = card.price_usd
+      ? `<span>$${esc(card.price_usd)}</span>`
+      : "";
+
+    // Oracle text: preserve line breaks with <br> (the DB stores \n)
+    const oracleHtml = card.oracle_text
+      ? `<div class="card-oracle">${esc(card.oracle_text).replace(/\n/g, "<br>")}</div>`
+      : "";
+
+    return `
+      <div class="result-card">
+        ${imgHtml}
+        <div class="card-body">
+          <div class="card-header">
+            <span class="card-name">${esc(card.name)}</span>
+            <span class="card-set">[${esc(card.set_code.toUpperCase())} #${esc(card.collector_number)}]</span>
+            <span class="${rarityClass}">${rarityAbbr}</span>
+          </div>
+          <div class="card-meta">
+            <span>${esc(card.mana_cost || "—")}</span>
+            <span>CMC ${card.cmc}</span>
+            <span>${renderColorPips(card.colors_json)}</span>
+            ${pt ? `<span>${pt}</span>` : ""}
+          </div>
+          <div class="card-type">${esc(card.type_line)}</div>
+          ${oracleHtml}
+          <div class="card-footer">
+            ${kwHtml}
+            ${priceHtml}
+            ${ownedHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  async function runSearch(e) {
+    if (e) e.preventDefault();
+
+    const form    = document.getElementById("search-form");
+    const results = document.getElementById("results");
+    const summary = document.getElementById("result-summary");
+
+    // Serialize form fields (includes the hidden color inputs via their name attrs)
+    const params = new URLSearchParams(new FormData(form));
+
+    // Convert the owned checkbox: FormData gives "on" when checked, we need "true"
+    if (params.get("owned") === "on") {
+      params.set("owned", "true");
+    } else {
+      params.delete("owned"); // don't send the param at all when unchecked
+    }
+
+    summary.textContent = "Searching…";
+    results.innerHTML = '<div class="state-msg">Searching…</div>';
+
+    try {
+      const res  = await fetch(`/api/search?${params}`);
+      const data = await res.json();
+
+      if (data.error) {
+        // Server returns 400 with { error: "..." } for bad FTS queries
+        results.innerHTML = `
+          <div class="error-box">
+            <strong>Query error:</strong> ${esc(data.error)}<br>
+            <small>Tip: wrap phrases in quotes — e.g. <code>"goblin token"</code></small>
+          </div>`;
+        summary.textContent = "";
+        return;
+      }
+
+      const count = data.count;
+      summary.textContent = `${count.toLocaleString()} result${count !== 1 ? "s" : ""}`;
+
+      if (count === 0) {
+        results.innerHTML = '<div class="state-msg">No cards found matching those filters.</div>';
+        return;
+      }
+
+      // Build all card HTML at once and set innerHTML in one shot (faster than appending)
+      results.innerHTML = data.results.map(renderCard).join("");
+    } catch (err) {
+      results.innerHTML = `<div class="error-box">Network error: ${esc(err.message)}</div>`;
+      summary.textContent = "";
+    }
+  }
+
+  // ── Clear all ─────────────────────────────────────────────────────────────
+
+  document.getElementById("clear-btn").addEventListener("click", () => {
+    // Reset all regular form inputs
+    document.getElementById("search-form").reset();
+
+    // Color buttons are <button> elements so form.reset() doesn't touch them —
+    // clear state and visuals manually
+    for (const group of Object.keys(colorState)) {
+      colorState[group].clear();
+      document.querySelectorAll(`[data-group="${group}"] .color-btn`).forEach(btn => {
+        btn.classList.remove("selected");
+      });
+      const hidden = document.getElementById(`hidden-${group}`);
+      if (hidden) hidden.value = "";
+    }
+
+    // Reset all three keyword pickers (clears selections, filter text, hidden inputs)
+    kwPickerResetFns.forEach(fn => fn());
+
+    document.getElementById("results").innerHTML = "";
+    document.getElementById("result-summary").textContent = "";
+  });
+
+  // ── Form submission ───────────────────────────────────────────────────────
+  document.getElementById("search-form").addEventListener("submit", runSearch);
+
+  // ── Page initialisation ───────────────────────────────────────────────────
+  // Run these in parallel on load — they're independent of each other.
+  loadKeywords(); // populates the three keyword picker panels
+
+  // DB status check: show inventory card count in the header
+  (async () => {
+    try {
+      const res  = await fetch("/api/search?owned=true&limit=500");
+      const data = await res.json();
+      const el   = document.getElementById("db-status");
+      if (data.error) {
+        el.textContent = "DB error — run bun run import-cards first";
+      } else {
+        el.textContent = `${data.count.toLocaleString()} cards in inventory`;
+      }
+    } catch {
+      document.getElementById("db-status").textContent = "Server not reachable";
+    }
+  })();
+</script>
+</body>
+</html>
