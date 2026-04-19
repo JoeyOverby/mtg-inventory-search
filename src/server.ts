@@ -45,6 +45,7 @@ function paramsToOptions(p: URLSearchParams): SearchOptions {
     powerMin:      p.get("power-min")     || undefined,
     toughnessMin:  p.get("toughness-min") || undefined,
     owned:         p.get("owned") === "true",
+    unique:        p.get("unique") === "true",
     limit:         p.get("limit")         || "100",
   };
 }
@@ -56,6 +57,24 @@ Bun.serve({
 
   async fetch(req) {
     const url = new URL(req.url);
+
+    // ── /api/stats ───────────────────────────────────────────────────────
+    // Returns inventory totals without being capped by the search limit.
+    if (url.pathname === "/api/stats") {
+      const db = getDb();
+      const row = db.prepare(`
+        SELECT
+          COUNT(DISTINCT c.name) AS unique_names,
+          COALESCE(SUM(inv.quantity), 0) AS total_quantity
+        FROM inventory inv
+        JOIN cards c ON c.id = inv.scryfall_id
+        WHERE inv.quantity > 0
+      `).get() as { unique_names: number; total_quantity: number };
+      return Response.json({
+        uniqueNames: row.unique_names,
+        totalQuantity: row.total_quantity,
+      });
+    }
 
     // ── /api/keywords ────────────────────────────────────────────────────
     // Returns two lists for the keyword picker UI:

@@ -90,6 +90,7 @@ program
   .option("--power-min <n>",       "power >= n  (numeric cards only)")
   .option("--toughness-min <n>",   "toughness >= n")
   .option("--owned",               "only show cards in your inventory")
+  .option("--unique",              "one result per card name; lists owned sets inline")
   .option("--limit <n>",           "max results (default 50, capped at 500)", "50")
   .action((opts: SearchOptions) => {
     const db = getDb();

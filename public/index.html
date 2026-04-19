@@ -715,6 +715,11 @@
             <input type="checkbox" id="f-owned" name="owned" style="width:16px;height:16px">
             Owned cards only
           </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;
+                        font-weight:600; color:#333; text-transform:none; letter-spacing:0; margin-top:6px">
+            <input type="checkbox" id="f-unique" name="unique" style="width:16px;height:16px">
+            Group by name
+          </label>
         </div>
         <div class="field">
           <label for="f-limit">Max results</label>
@@ -947,36 +952,50 @@
     const rarityClass = RARITY_CLASS[card.rarity] ?? "";
     const pt          = card.power ? ` · ${card.power}/${card.toughness}` : "";
 
+    // unique mode: owned_sets field is present (may be empty string for unowned)
+    const isUnique = card.owned_sets !== undefined;
+
     // Scryfall stores /normal/ images (~400KB each).
-    // Swapping the path segment to /small/ gives us the 146×204 thumbnail (~16KB)
-    // which is all we need at display size, and loads much faster.
+    // Swapping the path segment to /small/ gives us the 146×204 thumbnail (~16KB).
     const imgHtml = card.image_normal
       ? `<img class="card-thumb"
               src="${card.image_normal.replace("/normal/", "/small/")}"
               alt="${esc(card.name)}"
-              loading="lazy">`  // lazy: only fetch when scrolled into view
+              loading="lazy">`
       : `<div class="card-thumb-placeholder">No image</div>`;
 
-    // Keywords as small badges; empty array = no badges rendered
+    // Keywords as small badges
     const kwHtml = keywords.length
       ? `<div style="display:flex;gap:4px;flex-wrap:wrap">
            ${keywords.map(k => `<span class="kw-badge">${esc(k)}</span>`).join("")}
          </div>`
       : "";
 
-    // Only shown when the card is in inventory
-    const ownedHtml = card.quantity != null
-      ? `<span class="owned-badge">★ ${card.quantity}× ${esc(card.inv_condition ?? "")}</span>`
-      : "";
+    // Owned display differs by mode:
+    //   unique mode  → "★ Owned in: TMP ×3 (NearMint), USG ×1 (LP)"
+    //   normal mode  → "★ 3× NearMint"
+    let ownedHtml = "";
+    if (isUnique) {
+      if (card.owned_sets) {
+        ownedHtml = `<span class="owned-badge">★ Owned in: ${esc(card.owned_sets)}</span>`;
+      }
+    } else if (card.quantity != null) {
+      ownedHtml = `<span class="owned-badge">★ ${card.quantity}× ${esc(card.inv_condition ?? "")}</span>`;
+    }
 
     const priceHtml = card.price_usd
       ? `<span>$${esc(card.price_usd)}</span>`
       : "";
 
-    // Oracle text: preserve line breaks with <br> (the DB stores \n)
+    // Oracle text: preserve line breaks with <br>
     const oracleHtml = card.oracle_text
       ? `<div class="card-oracle">${esc(card.oracle_text).replace(/\n/g, "<br>")}</div>`
       : "";
+
+    // In unique mode, omit the per-printing set/rarity badge — we grouped by name
+    const setHtml = isUnique ? "" : `
+      <span class="card-set">[${esc((card.set_code || "").toUpperCase())} #${esc(card.collector_number || "")}]</span>
+      <span class="${rarityClass}">${rarityAbbr}</span>`;
 
     return `
       <div class="result-card">
@@ -984,8 +1003,7 @@
         <div class="card-body">
           <div class="card-header">
             <span class="card-name">${esc(card.name)}</span>
-            <span class="card-set">[${esc(card.set_code.toUpperCase())} #${esc(card.collector_number)}]</span>
-            <span class="${rarityClass}">${rarityAbbr}</span>
+            ${setHtml}
           </div>
           <div class="card-meta">
             <span>${esc(card.mana_cost || "—")}</span>
@@ -1017,11 +1035,16 @@
     // Serialize form fields (includes the hidden color inputs via their name attrs)
     const params = new URLSearchParams(new FormData(form));
 
-    // Convert the owned checkbox: FormData gives "on" when checked, we need "true"
+    // Convert checkboxes: FormData gives "on" when checked, we need "true"
     if (params.get("owned") === "on") {
       params.set("owned", "true");
     } else {
-      params.delete("owned"); // don't send the param at all when unchecked
+      params.delete("owned");
+    }
+    if (params.get("unique") === "on") {
+      params.set("unique", "true");
+    } else {
+      params.delete("unique");
     }
 
     summary.textContent = "Searching…";
@@ -1089,16 +1112,18 @@
   // Run these in parallel on load — they're independent of each other.
   loadKeywords(); // populates the three keyword picker panels
 
-  // DB status check: show inventory card count in the header
+  // DB status: use /api/stats so the count is never capped by the search limit
   (async () => {
     try {
-      const res  = await fetch("/api/search?owned=true&limit=500");
+      const res  = await fetch("/api/stats");
       const data = await res.json();
       const el   = document.getElementById("db-status");
       if (data.error) {
         el.textContent = "DB error — run bun run import-cards first";
       } else {
-        el.textContent = `${data.count.toLocaleString()} cards in inventory`;
+        el.textContent =
+          `${data.uniqueNames.toLocaleString()} unique cards in inventory` +
+          ` (${data.totalQuantity.toLocaleString()} total)`;
       }
     } catch {
       document.getElementById("db-status").textContent = "Server not reachable";

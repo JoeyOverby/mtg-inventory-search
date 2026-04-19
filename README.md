@@ -40,7 +40,23 @@ Scryfall publishes a free bulk export of every card. First, find the current dow
 curl -s https://api.scryfall.com/bulk-data | jq '.data[] | select(.type=="default_cards") | .download_uri'
 ```
 
-Download that file and put it in the `allCards/` folder. It should be named like `default-cards-YYYYMMDDHHMMSS.json` (~500 MB). The import script will always pick the most recent one.
+Download that file and put it in the `allCards/` folder. It must be named `default-cards-*.json` (the default Scryfall filename, e.g. `default-cards-20260101120000.json`). The import script always picks the most recent file in that folder.
+
+**What it is:** A JSON array of ~90,000 card objects. Each object has at minimum:
+
+| Field | Example | Used for |
+|---|---|---|
+| `id` | `"abc123..."` | Unique Scryfall ID, used as the inventory FK |
+| `name` | `"Lightning Bolt"` | Display and search |
+| `set` | `"m11"` | Set code (lowercase) |
+| `collector_number` | `"149"` | Matches inventory CSV |
+| `colors`, `color_identity` | `["R"]` | Color filtering |
+| `keywords` | `["Flying"]` | Keyword filtering |
+| `oracle_text` | `"Deal 3 damage..."` | Full-text search |
+| `image_uris.normal` | `"https://..."` | Card thumbnail |
+| `prices.usd` | `"0.49"` | Price display |
+
+Double-faced cards (transform, modal) may omit top-level `oracle_text` and `mana_cost` — the importer falls back to `card_faces[0]` automatically.
 
 > **Tip:** Re-download and re-import monthly to keep prices and new sets current.
 
@@ -50,25 +66,41 @@ Download that file and put it in the `allCards/` folder. It should be named like
 bun run import-cards
 ```
 
-This parses ~90,000 cards into `mtg.db`. It uses ~2 GB of RAM temporarily while parsing the JSON — this is normal and frees up after the import finishes. Takes 15–30 seconds.
+This parses all cards into `mtg.db`. It uses ~2 GB of RAM temporarily while loading the JSON — this is normal and frees up after import. Takes 15–30 seconds.
 
 ### 4. Import your inventory
 
-Export your collection as a CSV from your card management app (Dragon Shield Card Manager, Manabox, Deckbox, etc.) and place it in the `inventory/` folder.
+Export your collection as a CSV from your card management app and place it in the `inventory/` folder. The script always picks the alphabetically latest `.csv` in that folder.
 
-Expected CSV format:
+**Supported apps:** Dragon Shield Card Manager, Manabox, Deckbox, or any app whose export matches this column layout.
+
+**Required CSV columns** (the importer matches cards by set code + collector number):
+
+| Column | Example | Notes |
+|---|---|---|
+| `Card Name` | `Abandon Hope` | Used for display and unmatched-card warnings |
+| `Set Code` | `TMP` | Case-insensitive; matched against Scryfall `set` field |
+| `Card Number` | `107` | Collector number; must match Scryfall exactly |
+| `Quantity` | `2` | Defaults to 1 if missing or blank |
+
+**Optional columns** (imported if present, safe to omit):
+
+`Trade Quantity`, `Condition`, `Printing`, `Language`, `Price Bought`, `Date Bought`, `LOW`, `MID`, `MARKET`
+
+**Example CSV** (Dragon Shield format — the `"sep=,"` header line is stripped automatically):
 
 ```
 "sep=,"
 Folder Name,Quantity,Trade Quantity,Card Name,Set Code,Set Name,Card Number,Condition,Printing,Language,Price Bought,Date Bought,LOW,MID,MARKET
 Cards,1,0,Abandon Hope,TMP,Tempest,107,NearMint,Normal,English,0.05,2025-09-20,0.10,0.32,0.23
+Cards,2,0,Lightning Bolt,M11,Magic 2011,149,Excellent,Normal,English,0.49,2025-10-01,0.35,0.55,0.49
 ```
 
 ```bash
 bun run import-inventory
 ```
 
-The script always picks the alphabetically latest `.csv` in `inventory/`. After a trade or new purchase, just drop in a fresh export and re-run this command — it takes under a second.
+After a trade or new purchase, drop in a fresh export and re-run — it wipes and rebuilds the inventory table in under a second. Cards that don't match a Scryfall entry (wrong set code or collector number) are saved but flagged in the output and won't appear in `--owned` searches.
 
 ---
 
@@ -81,6 +113,8 @@ bun run ui
 Then open **http://localhost:3001** in your browser.
 
 The UI has click-to-toggle color buttons for W/U/B/R/G, text inputs for everything else, card thumbnails pulled from Scryfall, and shows owned quantity and condition for cards in your inventory.
+
+**Group by name** — checking this collapses multiple printings of the same card into one result. Instead of showing a separate row for each set a card was printed in, you get one row with an "Owned in: TMP ×3 (NearMint), USG ×1 (LP)" summary. Useful when you want to find cards that do something without wading through 20 reprints.
 
 ---
 
@@ -143,6 +177,7 @@ Colors are entered as comma-separated letters: `W` `U` `B` `R` `G` `C`
 | Flag | Behavior |
 |---|---|
 | `--owned` | Only show cards present in your inventory |
+| `--unique` | Collapse printings — one result per card name, owned sets listed inline |
 | `--limit <n>` | Max results to return (default 50, max 500) |
 
 ---

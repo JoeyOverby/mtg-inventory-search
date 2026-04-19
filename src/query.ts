@@ -51,6 +51,7 @@ export interface SearchOptions {
   powerMin?: string;
   toughnessMin?: string;
   owned?: boolean;
+  unique?: boolean;  // collapse printings: one row per card name, list owned sets
   limit: string;
 }
 
@@ -228,20 +229,64 @@ export function buildQuery(opts: SearchOptions): {
   const limit = Math.max(1, Math.min(parseInt(opts.limit) || 100, 500));
   params.push(limit);
 
-  const sql = `
-    SELECT
-      c.name, c.set_code, c.collector_number,
-      c.mana_cost, c.cmc, c.type_line, c.oracle_text,
-      c.power, c.toughness, c.rarity, c.layout,
-      c.colors_json, c.color_identity_json, c.keywords_json,
-      c.price_usd, c.image_normal,
-      inv.quantity, inv.condition AS inv_condition
-    FROM cards c
-    LEFT JOIN inventory inv ON inv.scryfall_id = c.id
-    ${where}
-    ORDER BY c.name, c.released_at DESC
-    LIMIT ?
-  `;
+  let sql: string;
+
+  if (opts.unique) {
+    // One row per card name: aggregate printings into GROUP_CONCAT, prefer owned
+    // printing's image, sum quantities across all owned printings.
+    sql = `
+      SELECT
+        c.name,
+        NULL                                        AS set_code,
+        NULL                                        AS collector_number,
+        MIN(c.mana_cost)                            AS mana_cost,
+        MIN(c.cmc)                                  AS cmc,
+        MIN(c.type_line)                            AS type_line,
+        MIN(c.oracle_text)                          AS oracle_text,
+        MIN(c.power)                                AS power,
+        MIN(c.toughness)                            AS toughness,
+        MIN(c.rarity)                               AS rarity,
+        MIN(c.layout)                               AS layout,
+        MIN(c.colors_json)                          AS colors_json,
+        MIN(c.color_identity_json)                  AS color_identity_json,
+        MIN(c.keywords_json)                        AS keywords_json,
+        MAX(c.price_usd)                            AS price_usd,
+        COALESCE(
+          MIN(CASE WHEN inv.quantity > 0 THEN c.image_normal ELSE NULL END),
+          MIN(c.image_normal)
+        )                                           AS image_normal,
+        COALESCE(GROUP_CONCAT(
+          CASE WHEN inv.quantity > 0
+               THEN UPPER(c.set_code) || ' ×' || inv.quantity
+                    || ' (' || COALESCE(inv.condition, '?') || ')'
+               ELSE NULL END,
+          ', '
+        ), '')                                      AS owned_sets,
+        SUM(CASE WHEN inv.quantity > 0 THEN inv.quantity ELSE 0 END) AS quantity,
+        NULL                                        AS inv_condition
+      FROM cards c
+      LEFT JOIN inventory inv ON inv.scryfall_id = c.id
+      ${where}
+      GROUP BY c.name
+      ORDER BY c.name
+      LIMIT ?
+    `;
+  } else {
+    sql = `
+      SELECT
+        c.name, c.set_code, c.collector_number,
+        c.mana_cost, c.cmc, c.type_line, c.oracle_text,
+        c.power, c.toughness, c.rarity, c.layout,
+        c.colors_json, c.color_identity_json, c.keywords_json,
+        c.price_usd, c.image_normal,
+        inv.quantity, inv.condition AS inv_condition
+      FROM cards c
+      LEFT JOIN inventory inv ON inv.scryfall_id = c.id
+      ${where}
+      ORDER BY c.name, c.released_at DESC
+      LIMIT ?
+    `;
+  }
 
   return { sql, params };
 }
