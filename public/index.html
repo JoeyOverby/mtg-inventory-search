@@ -27,6 +27,54 @@
     header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
     header .subtitle { font-size: 0.8rem; color: #888; margin-left: auto; }
 
+    /* ── Image cache toolbar ───────────────────────────────────────────────── */
+    #cache-toolbar {
+      background: #12122a;
+      color: #b8b8cc;
+      padding: 7px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.78rem;
+      flex-wrap: wrap;
+    }
+    .cache-toggle {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #dde;
+      white-space: nowrap;
+    }
+    #cache-sizes {
+      padding: 3px 7px;
+      font-size: 0.76rem;
+      background: #1e1e3a;
+      color: #ccc;
+      border: 1px solid #444;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #cache-stats { color: #7777aa; font-size: 0.76rem; }
+    .cache-btn {
+      padding: 3px 9px;
+      font-size: 0.74rem;
+      background: #2a2a4a;
+      color: #bbb;
+      border: 1px solid #444;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.1s;
+      white-space: nowrap;
+    }
+    .cache-btn:hover:not(:disabled) { background: #3a3a60; }
+    .cache-btn:disabled { opacity: 0.5; cursor: default; }
+    .cache-btn-dl { background: #1a3a2a; border-color: #2a5a3a; color: #9dcc9d; }
+    .cache-btn-dl:hover:not(:disabled) { background: #1e4a32; }
+    #cache-bulk-status { color: #6ab; font-size: 0.76rem; font-style: italic; }
+    .cache-divider { color: #444; }
+
     /* ── Main layout ───────────────────────────────────────────────────────── */
     .container { max-width: 1140px; margin: 0 auto; padding: 20px; }
 
@@ -606,6 +654,27 @@
   <span class="subtitle" id="db-status">Loading…</span>
 </header>
 
+<div id="cache-toolbar">
+  <label class="cache-toggle">
+    <input type="checkbox" id="cache-enabled" style="width:14px;height:14px">
+    Cache images
+  </label>
+  <select id="cache-sizes" title="Which image sizes to cache locally">
+    <option value="both">Both sizes (~112 KB/card)</option>
+    <option value="small">Small only (~12 KB/card)</option>
+    <option value="normal">Normal only (~100 KB/card)</option>
+  </select>
+  <span class="cache-divider">|</span>
+  <span id="cache-stats">—</span>
+  <span class="cache-divider">|</span>
+  <button type="button" class="cache-btn" id="cache-clear-small">Clear small</button>
+  <button type="button" class="cache-btn" id="cache-clear-normal">Clear normal</button>
+  <button type="button" class="cache-btn" id="cache-clear-all">Clear all</button>
+  <span class="cache-divider">|</span>
+  <button type="button" class="cache-btn cache-btn-dl" id="cache-bulk">⬇ Download all owned</button>
+  <span id="cache-bulk-status" hidden></span>
+</div>
+
 <div class="container">
   <div class="search-panel">
     <form class="form-grid" id="search-form" autocomplete="off">
@@ -1078,6 +1147,119 @@
       .join(" ");
   }
 
+  // ── Image cache state ─────────────────────────────────────────────────────
+  let _cacheEnabled = false;
+  let _cacheSizes   = "both";
+
+  // Returns the URL to use for a card image.
+  // When caching is on: routes through /api/image proxy (saves to disk on first fetch)
+  // When caching is off: returns the direct Scryfall URL
+  function cardImgUrl(scryfallId, scryfallNormalUrl, size) {
+    if (_cacheEnabled && scryfallId) {
+      return `/api/image?id=${encodeURIComponent(scryfallId)}&size=${size}&save=1`;
+    }
+    if (!scryfallNormalUrl) return "";
+    return size === "small"
+      ? scryfallNormalUrl.replace("/normal/", "/small/")
+      : scryfallNormalUrl;
+  }
+
+  function fmtBytes(b) {
+    if (b < 1024)        return `${b} B`;
+    if (b < 1048576)     return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1048576).toFixed(1)} MB`;
+  }
+
+  async function pollCacheStats() {
+    try {
+      const data = await fetch("/api/cache-stats").then(r => r.json());
+      const el   = document.getElementById("cache-stats");
+      if (!data.totalBytes) {
+        el.textContent = "No images cached";
+      } else {
+        const parts = [];
+        if (data.smallCount)  parts.push(`${data.smallCount.toLocaleString()} small (${fmtBytes(data.smallBytes)})`);
+        if (data.normalCount) parts.push(`${data.normalCount.toLocaleString()} normal (${fmtBytes(data.normalBytes)})`);
+        el.textContent = parts.join(" · ");
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function bulkDownload() {
+    const btn    = document.getElementById("cache-bulk");
+    const status = document.getElementById("cache-bulk-status");
+    btn.disabled  = true;
+    status.hidden = false;
+    status.textContent = "Loading card list…";
+
+    // Collect all owned card IDs across paginated results
+    const allIds = new Set();
+    let offset = 0;
+    const PAGE = 1000;
+    while (true) {
+      const data = await fetch(`/api/search?owned=true&unique=false&limit=${PAGE}&offset=${offset}`)
+        .then(r => r.json()).catch(() => ({ count: 0, results: [] }));
+      for (const card of (data.results || [])) {
+        if (card.scryfall_id) allIds.add(card.scryfall_id);
+      }
+      if (!data.results || data.count < PAGE) break;
+      offset += PAGE;
+    }
+
+    const sizes = _cacheSizes === "both"   ? ["small", "normal"]
+                : _cacheSizes === "small"  ? ["small"]
+                :                            ["normal"];
+
+    const tasks  = [...allIds].flatMap(id => sizes.map(sz => ({ id, sz })));
+    const total  = tasks.length;
+    let done     = 0;
+
+    // Download in batches of 10 with a brief pause to stay within Scryfall rate limits
+    for (let i = 0; i < tasks.length; i += 10) {
+      const chunk = tasks.slice(i, i + 10);
+      await Promise.all(chunk.map(({ id, sz }) =>
+        fetch(`/api/image?id=${encodeURIComponent(id)}&size=${sz}&save=1`).catch(() => {})
+      ));
+      done += chunk.length;
+      status.textContent = `${done.toLocaleString()} of ${total.toLocaleString()} images done…`;
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    status.textContent = `Done — ${allIds.size.toLocaleString()} cards cached`;
+    btn.disabled = false;
+    pollCacheStats();
+  }
+
+  function initCacheToolbar() {
+    _cacheEnabled = localStorage.getItem("mtg_cache_enabled") === "true";
+    _cacheSizes   = localStorage.getItem("mtg_cache_sizes") || "both";
+
+    const cbEnabled = document.getElementById("cache-enabled");
+    const selSizes  = document.getElementById("cache-sizes");
+    cbEnabled.checked = _cacheEnabled;
+    selSizes.value    = _cacheSizes;
+
+    cbEnabled.addEventListener("change", () => {
+      _cacheEnabled = cbEnabled.checked;
+      localStorage.setItem("mtg_cache_enabled", String(_cacheEnabled));
+    });
+    selSizes.addEventListener("change", () => {
+      _cacheSizes = selSizes.value;
+      localStorage.setItem("mtg_cache_sizes", _cacheSizes);
+    });
+
+    const clearReq = (size) => fetch("/api/cache-clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ size }),
+    }).then(() => pollCacheStats());
+
+    document.getElementById("cache-clear-small").addEventListener("click",  () => clearReq("small"));
+    document.getElementById("cache-clear-normal").addEventListener("click", () => clearReq("normal"));
+    document.getElementById("cache-clear-all").addEventListener("click",    () => clearReq("all"));
+    document.getElementById("cache-bulk").addEventListener("click", bulkDownload);
+  }
+
   // ── Card rendering ────────────────────────────────────────────────────────
   const RARITY_ABBR  = { common: "C", uncommon: "U", rare: "R", mythic: "M" };
   const RARITY_CLASS = { common: "rarity-C", uncommon: "rarity-U", rare: "rarity-R", mythic: "rarity-M" };
@@ -1100,9 +1282,10 @@
     // unique mode is signalled by the presence of owned_sets_json in the row
     const isUnique = card.owned_sets_json !== undefined;
 
-    // Thumbnail uses /small/ (~16 KB); full /normal/ image is shown in the modal
-    const imgHtml = card.image_normal
-      ? `<img class="card-thumb" src="${card.image_normal.replace("/normal/", "/small/")}" alt="${esc(card.name)}" loading="lazy">`
+    // Thumbnail: /small/ when caching off, /api/image proxy when caching on
+    const thumbSrc = cardImgUrl(card.scryfall_id, card.image_normal, "small");
+    const imgHtml  = thumbSrc
+      ? `<img class="card-thumb" src="${thumbSrc}" alt="${esc(card.name)}" loading="lazy">`
       : `<div class="card-thumb-placeholder">No image</div>`;
 
     const kwHtml = keywords.length
@@ -1116,11 +1299,12 @@
     if (isUnique) {
       const ownedSets = JSON.parse(card.owned_sets_json || "[]");
       if (ownedSets.length) {
-        const badges = ownedSets.map(s =>
-          s.img
-            ? `<button class="edition-badge" data-img="${esc(s.img)}" title="View this printing">${esc(s.label)}</button>`
-            : `<span class="edition-badge">${esc(s.label)}</span>`
-        ).join(" ");
+        const badges = ownedSets.map(s => {
+          const edImg = cardImgUrl(s.id || null, s.img, "normal");
+          return edImg
+            ? `<button class="edition-badge" data-img="${esc(edImg)}" title="View this printing">${esc(s.label)}</button>`
+            : `<span class="edition-badge">${esc(s.label)}</span>`;
+        }).join(" ");
         ownedHtml = `<span class="owned-badge">★ Owned in: ${badges}</span>`;
       }
     } else if (card.quantity != null) {
@@ -1135,8 +1319,9 @@
       <span class="card-set">[${esc((card.set_code || "").toUpperCase())} #${esc(card.collector_number || "")}]</span>
       <span class="${rarityClass}">${rarityAbbr}</span>`;
 
-    // data-img on the card drives click → modal (edition badges override this for specific printings)
-    const dataImg = card.image_normal ? ` data-img="${esc(card.image_normal)}"` : "";
+    // data-img drives click → modal; uses cached URL when caching is on
+    const normalSrc = cardImgUrl(card.scryfall_id, card.image_normal, "normal");
+    const dataImg   = normalSrc ? ` data-img="${esc(normalSrc)}"` : "";
 
     return `
       <div class="result-card"${dataImg}>
@@ -1292,6 +1477,8 @@
   });
 
   // ── Page initialisation ───────────────────────────────────────────────────
+  initCacheToolbar();
+  pollCacheStats();
   loadKeywords();
 
   (async () => {
