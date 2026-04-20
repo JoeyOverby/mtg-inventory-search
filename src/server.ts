@@ -25,6 +25,7 @@ function paramsToOptions(p: URLSearchParams): SearchOptions {
 
   return {
     name:          p.get("name")          || undefined,
+    oracle:        p.get("oracle")        || undefined,
     text:          p.get("text")          || undefined,
     type:          p.get("type")          || undefined,
     colorsAny:     p.get("colors-any")    || undefined,
@@ -44,9 +45,12 @@ function paramsToOptions(p: URLSearchParams): SearchOptions {
     layout:        p.get("layout")        || undefined,
     powerMin:      p.get("power-min")     || undefined,
     toughnessMin:  p.get("toughness-min") || undefined,
+    mainType:      p.get("main-type")    || undefined,
+    legendary:     p.get("legendary") === "true",
     owned:         p.get("owned") === "true",
     unique:        p.get("unique") === "true",
-    limit:         p.get("limit")         || "100",
+    offset:        p.get("offset")        || "0",
+    limit:         p.get("limit")         || "50",
   };
 }
 
@@ -100,7 +104,11 @@ Bun.serve({
       try {
         const { sql, params } = buildQuery(opts);
         const rows = db.prepare(sql).all(...params);
-        return Response.json({ count: rows.length, results: rows });
+        return Response.json({
+          count: rows.length,
+          results: rows,
+          _debug: { sql: sql.trim(), params },
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return Response.json({ error: message }, { status: 400 });

@@ -89,6 +89,8 @@ program
   .option("--layout <l>",          "normal | token | transform | split | ...")
   .option("--power-min <n>",       "power >= n  (numeric cards only)")
   .option("--toughness-min <n>",   "toughness >= n")
+  .option("--main-type <type>",    "card type: Creature, Instant, Sorcery, Artifact, Enchantment, Land, Planeswalker, Equipment, Aura, Saga, Vehicle, Battle")
+  .option("--legendary",           "only Legendary cards")
   .option("--owned",               "only show cards in your inventory")
   .option("--unique",              "one result per card name; lists owned sets inline")
   .option("--limit <n>",           "max results (default 50, capped at 500)", "50")

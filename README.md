@@ -5,10 +5,28 @@ Search your Magic: The Gathering card collection by color, type, oracle text, ke
 ## Features
 
 - Color filtering with Any / All / Exclude logic (e.g. "all of R, W, U but not G")
-- Full-text search over oracle text with boolean phrases — handles wording differences across editions
+- Oracle text search — reliable substring match (e.g. "goblin creature token" finds sorceries, instants, enchantments)
+- Card type dropdown (Creature, Instant, Sorcery, Artifact, Enchantment, Land, Planeswalker, etc.)
+- Legendary supertype filter
 - Keyword ability filtering (Flying, Haste, Deathtouch, Cycling, etc.)
 - Inventory tracking — mark cards as owned and filter by your collection
+- Paginated results with configurable page size
+- Click any card to pop up the full card image; click an edition badge to see that specific printing
 - CLI and local web UI, both backed by the same search engine
+
+---
+
+## Screenshots
+
+### Search screen
+![Search screen](img/SearchScreen.png)
+
+### Search results
+![Search results](img/SearchResultsView.png)
+
+### Edition popup — clicking an edition badge shows that printing's card image
+![Edition popup 1](img/EditionPopup1.png)
+![Edition popup 2](img/EditionPopup2.png)
 
 ---
 
@@ -52,8 +70,8 @@ Download that file and put it in the `allCards/` folder. It must be named `defau
 | `collector_number` | `"149"` | Matches inventory CSV |
 | `colors`, `color_identity` | `["R"]` | Color filtering |
 | `keywords` | `["Flying"]` | Keyword filtering |
-| `oracle_text` | `"Deal 3 damage..."` | Full-text search |
-| `image_uris.normal` | `"https://..."` | Card thumbnail |
+| `oracle_text` | `"Deal 3 damage..."` | Oracle text search |
+| `image_uris.normal` | `"https://..."` | Card thumbnail and popup |
 | `prices.usd` | `"0.49"` | Price display |
 
 Double-faced cards (transform, modal) may omit top-level `oracle_text` and `mana_cost` — the importer falls back to `card_faces[0]` automatically.
@@ -102,6 +120,8 @@ bun run import-inventory
 
 After a trade or new purchase, drop in a fresh export and re-run — it wipes and rebuilds the inventory table in under a second. Cards that don't match a Scryfall entry (wrong set code or collector number) are saved but flagged in the output and won't appear in `--owned` searches.
 
+> **Note on set codes:** Scryfall distinguishes closely related products with separate set codes. For example, *Magic: The Gathering Foundations* is `FDN` and *Foundations Jumpstart* is `J25`. If your inventory app exports them under the same code, some cards may not match. Check flagged output after import.
+
 ---
 
 ## Running the UI
@@ -112,9 +132,38 @@ bun run ui
 
 Then open **http://localhost:3001** in your browser.
 
-The UI has click-to-toggle color buttons for W/U/B/R/G, text inputs for everything else, card thumbnails pulled from Scryfall, and shows owned quantity and condition for cards in your inventory.
+### Filters
 
-**Group by name** — checking this collapses multiple printings of the same card into one result. Instead of showing a separate row for each set a card was printed in, you get one row with an "Owned in: TMP ×3 (NearMint), USG ×1 (LP)" summary. Useful when you want to find cards that do something without wading through 20 reprints.
+| Filter | Description |
+|---|---|
+| Name | Card name contains (case-insensitive) |
+| Card type | Structured dropdown: Creature, Instant, Sorcery, Artifact, Enchantment, Land, Planeswalker, Battle, and common subtypes (Equipment, Aura, Saga, Vehicle) |
+| Legendary only | Limits results to cards with the Legendary supertype |
+| Oracle text contains | Substring match on oracle text — "goblin creature token" finds any card whose oracle text contains that string, including plurals like "tokens" |
+| Subtype / type line contains | Free-text match against the full type line (e.g. "Elf Warrior") |
+| Colors / Color Identity | Click W/U/B/R/G buttons to filter; toggle Any / All / Exclude per group |
+| Keywords | Pick keyword abilities (Flying, Haste, etc.) or ability words (Landfall, Morbid, etc.) |
+| CMC, Rarity, Format, Layout | Standard stat filters |
+| Power ≥ / Toughness ≥ | Numeric minimum (cards with * or X count as 0) |
+| Owned cards only | Show only cards present in your inventory (default: on) |
+| Group by name | Collapse all printings into one row per card name (default: on) |
+| Per page | Results per page: 25 / 50 / 100 / 200 |
+
+### Group by name
+
+Checking **Group by name** collapses multiple printings of the same card into one result. Instead of showing a separate row for each set a card was printed in, you get one row with an "Owned in: TMP ×3 (NearMint), USG ×1 (LP)" summary. Useful when you want to find cards that do something without wading through 20 reprints.
+
+### Card image popup
+
+Click any card result to see a full-size popup of the card image. In **Group by name** mode, each edition badge (e.g. "FDN ×2 (Mint)") is also clickable — clicking it opens the image for that specific printing rather than the default one.
+
+### Debug panel
+
+Check **Show query** before searching to reveal the raw SQL and parameters the server generated. Useful for diagnosing unexpected results.
+
+### Pagination
+
+Use **Prev** / **Next** to page through results. The header shows the inventory totals (unique card names and total quantity) independently of the search limit.
 
 ---
 
@@ -144,7 +193,9 @@ Colors are entered as comma-separated letters: `W` `U` `B` `R` `G` `C`
 |---|---|
 | `--name <text>` | Name contains (case-insensitive) |
 | `--type <text>` | Type line contains (e.g. `Goblin`, `Instant`) |
-| `--text <query>` | Full-text search over oracle text, type line, and name — see FTS syntax below |
+| `--main-type <type>` | Card type: Creature, Instant, Sorcery, Artifact, Enchantment, Land, Planeswalker, Equipment, Aura, Saga, Vehicle, Battle |
+| `--legendary` | Only Legendary cards |
+| `--text <fts>` | Full-text search over oracle text, type line, and name — see FTS syntax below |
 
 ### Keyword abilities
 
@@ -182,9 +233,9 @@ Colors are entered as comma-separated letters: `W` `U` `B` `R` `G` `C`
 
 ---
 
-## Full-text search syntax
+## Full-text search syntax (CLI `--text` flag)
 
-The `--text` flag (and the oracle text input in the UI) accepts SQLite FTS5 query syntax:
+The `--text` flag accepts SQLite FTS5 query syntax:
 
 ```bash
 # Exact phrase
@@ -205,6 +256,8 @@ The `--text` flag (and the oracle text input in the UI) accepts SQLite FTS5 quer
 
 FTS searches across the card name, type line, and oracle text simultaneously.
 
+> **Note:** The web UI uses a simpler substring match for oracle text (more reliable for everyday searches). Use the CLI `--text` flag when you need boolean operators or prefix matching.
+
 ---
 
 ## CLI examples
@@ -216,8 +269,8 @@ bun run search -- --colors-any R,W --owned
 # Cards with all of R, W, U but not green
 bun run search -- --colors-all R,W,U --colors-not G
 
-# Goblin token creators — handles both old and new wording
-bun run search -- --text '"goblin token" OR "goblin creature token"' --owned
+# Sorceries that create Goblin tokens
+bun run search -- --text '"goblin creature token*"' --main-type Sorcery
 
 # Creatures with flying and deathtouch, legal in Commander
 bun run search -- --keyword Flying --keyword Deathtouch --type Creature --format commander
@@ -230,6 +283,9 @@ bun run search -- --layout token --owned
 
 # High-power creatures you own (power 5 or greater)
 bun run search -- --type Creature --power-min 5 --owned --limit 200
+
+# Legendary creatures legal in Commander
+bun run search -- --main-type Creature --legendary --format commander --owned
 ```
 
 ---
@@ -256,7 +312,7 @@ Colors are stored as a bitmask integer (W=1, U=2, B=4, R=8, G=16, C=32). This ma
 --colors-not G    →  (color_bits & 16) = 0
 ```
 
-Oracle text is indexed in a SQLite FTS5 virtual table. All text filters (name, type, oracle text) are searched through that index, which means phrase queries and boolean operators work natively without scanning the full table.
+Oracle text is indexed in a SQLite FTS5 virtual table for the CLI's `--text` flag. The UI's oracle text field uses a direct `LIKE` substring match, which is more predictable for everyday searches.
 
 Keywords are normalized into a separate `card_keywords` table (one row per card per keyword) so each `--keyword` filter is a fast EXISTS lookup rather than a JSON parse.
 
@@ -267,6 +323,7 @@ Keywords are normalized into a separate `card_keywords` table (one row per card 
 ```
 mtg-details/
 ├── allCards/               Scryfall bulk JSON (gitignored due to size)
+├── img/                    Screenshots for this README
 ├── inventory/              Your exported card CSVs (gitignored)
 ├── public/
 │   └── index.html          Single-file web UI

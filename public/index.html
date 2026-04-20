@@ -479,6 +479,77 @@
       font-weight: 700;
     }
 
+    /* ── Card modal ────────────────────────────────────────────────────────── */
+    /*
+     * Full-screen overlay that shows a card image at full /normal/ size.
+     * Click anywhere on the overlay (or press Escape) to dismiss.
+     */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.82);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      cursor: pointer;
+      animation: modal-fade-in 0.12s ease;
+    }
+    .modal-overlay[hidden] { display: none; }
+    @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+    .modal-card-img {
+      max-height: 88vh;
+      max-width: 90vw;
+      width: auto;
+      border-radius: 14px;
+      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.7);
+      cursor: default;
+      pointer-events: none; /* clicks pass through to the overlay */
+      display: block;
+    }
+
+    /* Clickable cards get a pointer cursor and a subtle hover lift */
+    .result-card[data-img] { cursor: pointer; }
+    .result-card[data-img]:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+
+    /* Edition badges — clickable pills inside the "Owned in:" line */
+    .edition-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.25);
+      border: 1px solid rgba(0,0,0,0.12);
+      color: inherit;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-family: monospace;
+      cursor: pointer;
+      line-height: 1.6;
+      transition: background 0.1s;
+    }
+    .edition-badge:hover { background: rgba(0,0,0,0.1); }
+
+    /* ── Pagination ─────────────────────────────────────────────────────────── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 18px;
+      padding-bottom: 24px;
+    }
+    .pagination[hidden] { display: none; }
+    #page-info {
+      font-size: 0.85rem;
+      color: #666;
+      min-width: 80px;
+      text-align: center;
+    }
+    #prev-btn:disabled, #next-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
     /* ── State messages ────────────────────────────────────────────────────── */
     .state-msg {
       text-align: center;
@@ -495,6 +566,26 @@
       border-radius: 6px;
       font-size: 0.85rem;
     }
+
+    /* ── Debug panel ────────────────────────────────────────────────────────── */
+    #debug-panel {
+      background: #12121f;
+      color: #b8e0b8;
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.76rem;
+      line-height: 1.6;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin-top: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid #2a2a40;
+    }
+    #debug-panel[hidden] { display: none; }
+    #debug-panel .dbg-head { color: #7ec8e3; font-weight: 700; }
+    #debug-panel .dbg-sql  { color: #e8d8a0; }
+    #debug-panel .dbg-params { color: #d8a0e8; }
+    #debug-panel .dbg-count  { color: #a0e8a0; }
 
     /* ── Responsive ────────────────────────────────────────────────────────── */
     @media (max-width: 680px) {
@@ -526,17 +617,51 @@
       </div>
 
       <div class="field">
-        <label for="f-type">Type line</label>
-        <input type="text" id="f-type" name="type" placeholder="e.g. Goblin, Creature, Instant">
+        <label for="f-main-type">Card type</label>
+        <select id="f-main-type" name="main-type">
+          <option value="">Any type</option>
+          <optgroup label="Card Types">
+            <option value="Creature">Creature</option>
+            <option value="Instant">Instant</option>
+            <option value="Sorcery">Sorcery</option>
+            <option value="Artifact">Artifact</option>
+            <option value="Enchantment">Enchantment</option>
+            <option value="Land">Land</option>
+            <option value="Planeswalker">Planeswalker</option>
+            <option value="Battle">Battle</option>
+            <option value="Tribal">Tribal</option>
+          </optgroup>
+          <optgroup label="Common Subtypes">
+            <option value="Equipment">Equipment</option>
+            <option value="Aura">Aura</option>
+            <option value="Saga">Saga</option>
+            <option value="Vehicle">Vehicle</option>
+            <option value="Token">Token</option>
+          </optgroup>
+        </select>
       </div>
 
       <div class="field full-width">
-        <label for="f-text">Oracle text (full-text search)</label>
-        <input type="text" id="f-text" name="text"
-               placeholder='"goblin token" OR "goblin creature token"'>
+        <label for="f-oracle">Oracle text contains</label>
+        <input type="text" id="f-oracle" name="oracle"
+               placeholder='e.g. goblin creature token'>
         <span class="hint">
-          Phrases in quotes · AND / OR / NOT · prefix* · searches name, type &amp; oracle text
+          Substring match — "goblin creature token" finds cards with "Goblin creature tokens" · case-insensitive
         </span>
+      </div>
+
+      <div class="field">
+        <label for="f-type">Subtype / type line contains</label>
+        <input type="text" id="f-type" name="type" placeholder="e.g. Goblin, Elf Warrior">
+      </div>
+
+      <div class="field" style="justify-content:flex-end; padding-bottom:4px">
+        <label style="margin-bottom:8px">&nbsp;</label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;
+                      font-weight:600; color:#333; text-transform:none; letter-spacing:0">
+          <input type="checkbox" id="f-legendary" name="legendary" style="width:16px;height:16px">
+          Legendary only
+        </label>
       </div>
 
       <!-- ── Color picker ───────────────────────────────────────────────── -->
@@ -712,22 +837,22 @@
           <label style="margin-bottom:8px">&nbsp;</label>
           <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;
                         font-weight:600; color:#333; text-transform:none; letter-spacing:0">
-            <input type="checkbox" id="f-owned" name="owned" style="width:16px;height:16px">
+            <input type="checkbox" id="f-owned" name="owned" style="width:16px;height:16px" checked>
             Owned cards only
           </label>
           <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;
                         font-weight:600; color:#333; text-transform:none; letter-spacing:0; margin-top:6px">
-            <input type="checkbox" id="f-unique" name="unique" style="width:16px;height:16px">
+            <input type="checkbox" id="f-unique" name="unique" style="width:16px;height:16px" checked>
             Group by name
           </label>
         </div>
         <div class="field">
-          <label for="f-limit">Max results</label>
+          <label for="f-limit">Per page</label>
           <select id="f-limit" name="limit">
-            <option value="50">50</option>
-            <option value="100" selected>100</option>
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
             <option value="200">200</option>
-            <option value="500">500</option>
           </select>
         </div>
       </div>
@@ -736,14 +861,34 @@
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Search</button>
         <button type="button" class="btn btn-secondary" id="clear-btn">Clear all</button>
+        <label style="display:flex;align-items:center;gap:5px;font-size:0.8rem;color:#999;
+                      font-weight:600;text-transform:none;letter-spacing:0;cursor:pointer">
+          <input type="checkbox" id="f-debug" style="width:14px;height:14px">
+          Show query
+        </label>
         <span id="result-summary"></span>
       </div>
 
     </form>
   </div>
 
+  <!-- Debug panel — shown when "Show query" is checked -->
+  <pre id="debug-panel" hidden></pre>
+
   <!-- Results injected here by JS -->
   <div id="results"></div>
+
+  <!-- Pagination controls — hidden until a search returns enough results -->
+  <div class="pagination" id="pagination" hidden>
+    <button class="btn btn-secondary" id="prev-btn">← Prev</button>
+    <span id="page-info"></span>
+    <button class="btn btn-secondary" id="next-btn">Next →</button>
+  </div>
+</div>
+
+<!-- Card image modal — click anywhere or press Escape to close -->
+<div class="modal-overlay" id="card-modal" hidden>
+  <img class="modal-card-img" id="modal-img" src="" alt="Card image">
 </div>
 
 <script>
@@ -952,53 +1097,49 @@
     const rarityClass = RARITY_CLASS[card.rarity] ?? "";
     const pt          = card.power ? ` · ${card.power}/${card.toughness}` : "";
 
-    // unique mode: owned_sets field is present (may be empty string for unowned)
-    const isUnique = card.owned_sets !== undefined;
+    // unique mode is signalled by the presence of owned_sets_json in the row
+    const isUnique = card.owned_sets_json !== undefined;
 
-    // Scryfall stores /normal/ images (~400KB each).
-    // Swapping the path segment to /small/ gives us the 146×204 thumbnail (~16KB).
+    // Thumbnail uses /small/ (~16 KB); full /normal/ image is shown in the modal
     const imgHtml = card.image_normal
-      ? `<img class="card-thumb"
-              src="${card.image_normal.replace("/normal/", "/small/")}"
-              alt="${esc(card.name)}"
-              loading="lazy">`
+      ? `<img class="card-thumb" src="${card.image_normal.replace("/normal/", "/small/")}" alt="${esc(card.name)}" loading="lazy">`
       : `<div class="card-thumb-placeholder">No image</div>`;
 
-    // Keywords as small badges
     const kwHtml = keywords.length
-      ? `<div style="display:flex;gap:4px;flex-wrap:wrap">
-           ${keywords.map(k => `<span class="kw-badge">${esc(k)}</span>`).join("")}
-         </div>`
+      ? `<div style="display:flex;gap:4px;flex-wrap:wrap">${keywords.map(k => `<span class="kw-badge">${esc(k)}</span>`).join("")}</div>`
       : "";
 
-    // Owned display differs by mode:
-    //   unique mode  → "★ Owned in: TMP ×3 (NearMint), USG ×1 (LP)"
+    // Owned display:
+    //   unique mode  → clickable edition badges so each printing opens its own image
     //   normal mode  → "★ 3× NearMint"
     let ownedHtml = "";
     if (isUnique) {
-      if (card.owned_sets) {
-        ownedHtml = `<span class="owned-badge">★ Owned in: ${esc(card.owned_sets)}</span>`;
+      const ownedSets = JSON.parse(card.owned_sets_json || "[]");
+      if (ownedSets.length) {
+        const badges = ownedSets.map(s =>
+          s.img
+            ? `<button class="edition-badge" data-img="${esc(s.img)}" title="View this printing">${esc(s.label)}</button>`
+            : `<span class="edition-badge">${esc(s.label)}</span>`
+        ).join(" ");
+        ownedHtml = `<span class="owned-badge">★ Owned in: ${badges}</span>`;
       }
     } else if (card.quantity != null) {
       ownedHtml = `<span class="owned-badge">★ ${card.quantity}× ${esc(card.inv_condition ?? "")}</span>`;
     }
 
-    const priceHtml = card.price_usd
-      ? `<span>$${esc(card.price_usd)}</span>`
-      : "";
+    const priceHtml  = card.price_usd  ? `<span>$${esc(card.price_usd)}</span>` : "";
+    const oracleHtml = card.oracle_text ? `<div class="card-oracle">${esc(card.oracle_text).replace(/\n/g, "<br>")}</div>` : "";
 
-    // Oracle text: preserve line breaks with <br>
-    const oracleHtml = card.oracle_text
-      ? `<div class="card-oracle">${esc(card.oracle_text).replace(/\n/g, "<br>")}</div>`
-      : "";
-
-    // In unique mode, omit the per-printing set/rarity badge — we grouped by name
+    // In unique mode omit per-printing set/rarity — we grouped by name
     const setHtml = isUnique ? "" : `
       <span class="card-set">[${esc((card.set_code || "").toUpperCase())} #${esc(card.collector_number || "")}]</span>
       <span class="${rarityClass}">${rarityAbbr}</span>`;
 
+    // data-img on the card drives click → modal (edition badges override this for specific printings)
+    const dataImg = card.image_normal ? ` data-img="${esc(card.image_normal)}"` : "";
+
     return `
-      <div class="result-card">
+      <div class="result-card"${dataImg}>
         ${imgHtml}
         <div class="card-body">
           <div class="card-header">
@@ -1013,118 +1154,153 @@
           </div>
           <div class="card-type">${esc(card.type_line)}</div>
           ${oracleHtml}
-          <div class="card-footer">
-            ${kwHtml}
-            ${priceHtml}
-            ${ownedHtml}
-          </div>
+          <div class="card-footer">${kwHtml}${priceHtml}${ownedHtml}</div>
         </div>
-      </div>
-    `;
+      </div>`;
   }
 
+  // ── Modal ─────────────────────────────────────────────────────────────────
+  function openModal(imgUrl) {
+    if (!imgUrl) return;
+    document.getElementById("modal-img").src = imgUrl;
+    document.getElementById("card-modal").hidden = false;
+  }
+  function closeModal() {
+    document.getElementById("card-modal").hidden = true;
+    document.getElementById("modal-img").src = "";
+  }
+  document.getElementById("card-modal").addEventListener("click", closeModal);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+  // ── Pagination state ──────────────────────────────────────────────────────
+  let _currentOffset = 0;
+
   // ── Search ────────────────────────────────────────────────────────────────
+  async function runSearch(offset = 0) {
+    _currentOffset = offset;
 
-  async function runSearch(e) {
-    if (e) e.preventDefault();
+    const form       = document.getElementById("search-form");
+    const results    = document.getElementById("results");
+    const summary    = document.getElementById("result-summary");
+    const pagination = document.getElementById("pagination");
 
-    const form    = document.getElementById("search-form");
-    const results = document.getElementById("results");
-    const summary = document.getElementById("result-summary");
-
-    // Serialize form fields (includes the hidden color inputs via their name attrs)
     const params = new URLSearchParams(new FormData(form));
 
-    // Convert checkboxes: FormData gives "on" when checked, we need "true"
-    if (params.get("owned") === "on") {
-      params.set("owned", "true");
-    } else {
-      params.delete("owned");
-    }
-    if (params.get("unique") === "on") {
-      params.set("unique", "true");
-    } else {
-      params.delete("unique");
-    }
+    // FormData gives "on" for checked boxes; server expects "true"
+    ["owned", "unique", "legendary"].forEach(key => {
+      if (params.get(key) === "on") params.set(key, "true"); else params.delete(key);
+    });
+    if (offset > 0) params.set("offset", String(offset));
+
+    const pageSize  = parseInt(params.get("limit") || "50");
+    const showDebug = document.getElementById("f-debug").checked;
 
     summary.textContent = "Searching…";
-    results.innerHTML = '<div class="state-msg">Searching…</div>';
+    results.innerHTML   = '<div class="state-msg">Searching…</div>';
+    pagination.hidden   = true;
+    document.getElementById("debug-panel").hidden = true;
 
     try {
       const res  = await fetch(`/api/search?${params}`);
       const data = await res.json();
 
+      // Always log to console; show inline only when "Show query" is checked
+      if (data._debug) {
+        console.debug("[MTG search]", data._debug);
+        if (showDebug) {
+          const d = data._debug;
+          const panel = document.getElementById("debug-panel");
+          panel.innerHTML =
+            `<span class="dbg-head">── SQL ──────────────────────────────────────</span>\n` +
+            `<span class="dbg-sql">${esc(d.sql)}</span>\n\n` +
+            `<span class="dbg-head">── Params ───────────────────────────────────</span>\n` +
+            `<span class="dbg-params">${esc(JSON.stringify(d.params, null, 2))}</span>\n\n` +
+            `<span class="dbg-count">── Results: ${data.count} row(s) returned ────────────</span>`;
+          panel.hidden = false;
+        }
+      }
+
       if (data.error) {
-        // Server returns 400 with { error: "..." } for bad FTS queries
-        results.innerHTML = `
-          <div class="error-box">
-            <strong>Query error:</strong> ${esc(data.error)}<br>
-            <small>Tip: wrap phrases in quotes — e.g. <code>"goblin token"</code></small>
-          </div>`;
-        summary.textContent = "";
-        return;
+        results.innerHTML = `<div class="error-box"><strong>Query error:</strong> ${esc(data.error)}<br>
+          <small>Tip: wrap phrases in quotes — e.g. <code>"goblin token"</code></small></div>`;
+        summary.textContent = ""; return;
       }
 
       const count = data.count;
-      summary.textContent = `${count.toLocaleString()} result${count !== 1 ? "s" : ""}`;
-
       if (count === 0) {
-        results.innerHTML = '<div class="state-msg">No cards found matching those filters.</div>';
-        return;
+        results.innerHTML   = '<div class="state-msg">No cards found matching those filters.</div>';
+        summary.textContent = ""; return;
       }
 
-      // Build all card HTML at once and set innerHTML in one shot (faster than appending)
+      const from = offset + 1;
+      const to   = offset + count;
+      summary.textContent = `${from.toLocaleString()}–${to.toLocaleString()}${count === pageSize ? "+" : ""}`;
+
       results.innerHTML = data.results.map(renderCard).join("");
+
+      // Wire card clicks to the modal; edition badge clicks show that printing's image
+      results.querySelectorAll(".result-card[data-img]").forEach(card => {
+        card.addEventListener("click", e => {
+          const badge = e.target.closest(".edition-badge[data-img]");
+          openModal(badge ? badge.dataset.img : card.dataset.img);
+        });
+      });
+
+      // Show Prev / Next when there are adjacent pages
+      const hasPrev = offset > 0;
+      const hasNext = count === pageSize;
+      if (hasPrev || hasNext) {
+        pagination.hidden = false;
+        document.getElementById("prev-btn").disabled = !hasPrev;
+        document.getElementById("next-btn").disabled = !hasNext;
+        document.getElementById("page-info").textContent = `${from.toLocaleString()}–${to.toLocaleString()}`;
+      }
+
     } catch (err) {
-      results.innerHTML = `<div class="error-box">Network error: ${esc(err.message)}</div>`;
+      results.innerHTML   = `<div class="error-box">Network error: ${esc(err.message)}</div>`;
       summary.textContent = "";
     }
   }
 
   // ── Clear all ─────────────────────────────────────────────────────────────
-
   document.getElementById("clear-btn").addEventListener("click", () => {
-    // Reset all regular form inputs
     document.getElementById("search-form").reset();
-
-    // Color buttons are <button> elements so form.reset() doesn't touch them —
-    // clear state and visuals manually
     for (const group of Object.keys(colorState)) {
       colorState[group].clear();
-      document.querySelectorAll(`[data-group="${group}"] .color-btn`).forEach(btn => {
-        btn.classList.remove("selected");
-      });
+      document.querySelectorAll(`[data-group="${group}"] .color-btn`).forEach(btn => btn.classList.remove("selected"));
       const hidden = document.getElementById(`hidden-${group}`);
       if (hidden) hidden.value = "";
     }
-
-    // Reset all three keyword pickers (clears selections, filter text, hidden inputs)
     kwPickerResetFns.forEach(fn => fn());
-
-    document.getElementById("results").innerHTML = "";
+    document.getElementById("results").innerHTML   = "";
     document.getElementById("result-summary").textContent = "";
+    document.getElementById("pagination").hidden   = true;
+    document.getElementById("debug-panel").hidden  = true;
+    _currentOffset = 0;
   });
 
-  // ── Form submission ───────────────────────────────────────────────────────
-  document.getElementById("search-form").addEventListener("submit", runSearch);
+  // ── Form + pagination wiring ──────────────────────────────────────────────
+  document.getElementById("search-form").addEventListener("submit", e => { e.preventDefault(); runSearch(0); });
+
+  document.getElementById("prev-btn").addEventListener("click", () => {
+    const pageSize = parseInt(document.getElementById("f-limit").value || "50");
+    runSearch(Math.max(0, _currentOffset - pageSize));
+  });
+  document.getElementById("next-btn").addEventListener("click", () => {
+    const pageSize = parseInt(document.getElementById("f-limit").value || "50");
+    runSearch(_currentOffset + pageSize);
+  });
 
   // ── Page initialisation ───────────────────────────────────────────────────
-  // Run these in parallel on load — they're independent of each other.
-  loadKeywords(); // populates the three keyword picker panels
+  loadKeywords();
 
-  // DB status: use /api/stats so the count is never capped by the search limit
   (async () => {
     try {
       const res  = await fetch("/api/stats");
       const data = await res.json();
       const el   = document.getElementById("db-status");
-      if (data.error) {
-        el.textContent = "DB error — run bun run import-cards first";
-      } else {
-        el.textContent =
-          `${data.uniqueNames.toLocaleString()} unique cards in inventory` +
-          ` (${data.totalQuantity.toLocaleString()} total)`;
-      }
+      if (data.error) el.textContent = "DB error — run bun run import-cards first";
+      else el.textContent = `${data.uniqueNames.toLocaleString()} unique cards in inventory (${data.totalQuantity.toLocaleString()} total)`;
     } catch {
       document.getElementById("db-status").textContent = "Server not reachable";
     }

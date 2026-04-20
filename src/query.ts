@@ -31,7 +31,8 @@ export const ABILITY_WORDS = new Set([
 
 export interface SearchOptions {
   name?: string;
-  text?: string;       // FTS5 query: phrases, AND/OR/NOT, prefix*
+  oracle?: string;     // oracle_text LIKE substring match (simple, reliable)
+  text?: string;       // FTS5 query: phrases, AND/OR/NOT, prefix* (CLI / advanced)
   type?: string;
   colorsAny?: string;  // comma-separated color letters, e.g. "R,W"
   colorsAll?: string;
@@ -50,8 +51,11 @@ export interface SearchOptions {
   layout?: string;   // "normal" | "token" | "transform" | "split" | ...
   powerMin?: string;
   toughnessMin?: string;
+  mainType?: string;  // structured type dropdown: Creature, Land, Artifact, etc.
+  legendary?: boolean; // filter for the Legendary supertype
   owned?: boolean;
   unique?: boolean;  // collapse printings: one row per card name, list owned sets
+  offset?: string;   // pagination: number of rows to skip (default 0)
   limit: string;
 }
 
@@ -75,7 +79,18 @@ export function buildQuery(opts: SearchOptions): {
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
-  // ── Full-text search ─────────────────────────────────────────────────────
+  // ── Oracle text substring search (LIKE) ──────────────────────────────────
+  // Simple case-insensitive substring match on oracle_text.
+  // "goblin creature token" matches "Goblin creature tokens." reliably.
+  if (opts.oracle) {
+    const oracleClean = opts.oracle.replace(/^["']+|["']+$/g, "").trim();
+    if (oracleClean) {
+      conditions.push("c.oracle_text LIKE ? COLLATE NOCASE");
+      params.push(`%${oracleClean}%`);
+    }
+  }
+
+  // ── Full-text search (FTS5) ───────────────────────────────────────────────
   // FTS5 content table spans name, type_line, and oracle_text.
   // Supports: "exact phrase"  AND/OR/NOT  goblin*
   if (opts.text) {
@@ -214,6 +229,18 @@ export function buildQuery(opts: SearchOptions): {
     params.push(parseInt(opts.toughnessMin));
   }
 
+  // ── Card type / supertype ────────────────────────────────────────────────
+  // mainType is a structured pick (Creature, Land, etc.) — same LIKE logic as
+  // the free-form `type` filter but kept separate so both can be active at once.
+  if (opts.mainType) {
+    conditions.push("c.type_line LIKE ? COLLATE NOCASE");
+    params.push(`%${opts.mainType}%`);
+  }
+
+  if (opts.legendary) {
+    conditions.push("c.type_line LIKE '%Legendary%' COLLATE NOCASE");
+  }
+
   // ── Owned ─────────────────────────────────────────────────────────────────
   if (opts.owned) {
     conditions.push(
@@ -226,50 +253,55 @@ export function buildQuery(opts: SearchOptions): {
     ? `WHERE ${conditions.join("\n    AND ")}`
     : "";
 
-  const limit = Math.max(1, Math.min(parseInt(opts.limit) || 100, 500));
-  params.push(limit);
+  const limit  = Math.max(1, Math.min(parseInt(opts.limit) || 50, 1000));
+  const offset = Math.max(0, parseInt(opts.offset || "0") || 0);
+  params.push(limit, offset);
 
   let sql: string;
 
   if (opts.unique) {
-    // One row per card name: aggregate printings into GROUP_CONCAT, prefer owned
-    // printing's image, sum quantities across all owned printings.
+    // One row per card name.
+    // owned_sets_json: JSON array of { label, img } per owned printing so the
+    // UI can render clickable edition badges that open the right card image.
     sql = `
       SELECT
         c.name,
-        NULL                                        AS set_code,
-        NULL                                        AS collector_number,
-        MIN(c.mana_cost)                            AS mana_cost,
-        MIN(c.cmc)                                  AS cmc,
-        MIN(c.type_line)                            AS type_line,
-        MIN(c.oracle_text)                          AS oracle_text,
-        MIN(c.power)                                AS power,
-        MIN(c.toughness)                            AS toughness,
-        MIN(c.rarity)                               AS rarity,
-        MIN(c.layout)                               AS layout,
-        MIN(c.colors_json)                          AS colors_json,
-        MIN(c.color_identity_json)                  AS color_identity_json,
-        MIN(c.keywords_json)                        AS keywords_json,
-        MAX(c.price_usd)                            AS price_usd,
+        NULL                                         AS set_code,
+        NULL                                         AS collector_number,
+        MIN(c.mana_cost)                             AS mana_cost,
+        MIN(c.cmc)                                   AS cmc,
+        MIN(c.type_line)                             AS type_line,
+        MIN(c.oracle_text)                           AS oracle_text,
+        MIN(c.power)                                 AS power,
+        MIN(c.toughness)                             AS toughness,
+        MIN(c.rarity)                                AS rarity,
+        MIN(c.layout)                                AS layout,
+        MIN(c.colors_json)                           AS colors_json,
+        MIN(c.color_identity_json)                   AS color_identity_json,
+        MIN(c.keywords_json)                         AS keywords_json,
+        MAX(c.price_usd)                             AS price_usd,
         COALESCE(
           MIN(CASE WHEN inv.quantity > 0 THEN c.image_normal ELSE NULL END),
           MIN(c.image_normal)
-        )                                           AS image_normal,
-        COALESCE(GROUP_CONCAT(
+        )                                            AS image_normal,
+        COALESCE('[' || GROUP_CONCAT(
           CASE WHEN inv.quantity > 0
-               THEN UPPER(c.set_code) || ' ×' || inv.quantity
-                    || ' (' || COALESCE(inv.condition, '?') || ')'
+               THEN json_object(
+                 'label', UPPER(c.set_code) || ' ×' || inv.quantity
+                          || ' (' || COALESCE(inv.condition, '?') || ')',
+                 'img', COALESCE(c.image_normal, '')
+               )
                ELSE NULL END,
-          ', '
-        ), '')                                      AS owned_sets,
+          ','
+        ) || ']', '[]')                              AS owned_sets_json,
         SUM(CASE WHEN inv.quantity > 0 THEN inv.quantity ELSE 0 END) AS quantity,
-        NULL                                        AS inv_condition
+        NULL                                         AS inv_condition
       FROM cards c
       LEFT JOIN inventory inv ON inv.scryfall_id = c.id
       ${where}
       GROUP BY c.name
       ORDER BY c.name
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `;
   } else {
     sql = `
@@ -284,7 +316,7 @@ export function buildQuery(opts: SearchOptions): {
       LEFT JOIN inventory inv ON inv.scryfall_id = c.id
       ${where}
       ORDER BY c.name, c.released_at DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `;
   }
 
