@@ -57,6 +57,46 @@ export interface SearchOptions {
   unique?: boolean;  // collapse printings: one row per card name, list owned sets
   offset?: string;   // pagination: number of rows to skip (default 0)
   limit: string;
+  sort1?: string; sort1Dir?: string;
+  sort2?: string; sort2Dir?: string;
+  sort3?: string; sort3Dir?: string;
+}
+
+// ── Sort expressions ────────────────────────────────────────────────────────
+// Each key maps to SQL expressions for normal mode and GROUP BY (unique) mode.
+// Unique mode must use aggregate functions because of GROUP BY c.name.
+
+const RARITY_CASE = `CASE c.rarity WHEN 'common' THEN 1 WHEN 'uncommon' THEN 2 WHEN 'rare' THEN 3 WHEN 'mythic' THEN 4 ELSE 0 END`;
+
+const SORT_EXPRS: Record<string, { normal: string; unique: string }> = {
+  name:      { normal: "c.name",                                               unique: "c.name" },
+  cmc:       { normal: "c.cmc",                                                unique: "MIN(c.cmc)" },
+  type:      { normal: "c.type_line",                                          unique: "MIN(c.type_line)" },
+  color:     { normal: "c.color_bits",                                         unique: "MIN(c.color_bits)" },
+  rarity:    { normal: RARITY_CASE,                                            unique: `MIN(${RARITY_CASE})` },
+  set:       { normal: "c.released_at",                                        unique: "MAX(c.released_at)" },
+  price:     { normal: "CAST(COALESCE(c.price_usd,'0') AS REAL)",              unique: "CAST(COALESCE(MAX(c.price_usd),'0') AS REAL)" },
+  quantity:  { normal: "COALESCE(inv.quantity,0)",                             unique: "SUM(CASE WHEN inv.quantity > 0 THEN inv.quantity ELSE 0 END)" },
+  power:     { normal: "CAST(COALESCE(c.power,'0') AS INTEGER)",               unique: "CAST(COALESCE(MIN(c.power),'0') AS INTEGER)" },
+  toughness: { normal: "CAST(COALESCE(c.toughness,'0') AS INTEGER)",           unique: "CAST(COALESCE(MIN(c.toughness),'0') AS INTEGER)" },
+};
+
+function buildOrderBy(
+  sorts: Array<{ key?: string; dir?: string }>,
+  isUnique: boolean,
+): string {
+  const parts: string[] = [];
+  for (const { key, dir } of sorts) {
+    if (!key || !SORT_EXPRS[key]) continue;
+    const expr = isUnique ? SORT_EXPRS[key].unique : SORT_EXPRS[key].normal;
+    parts.push(`${expr} ${dir === "desc" ? "DESC" : "ASC"}`);
+  }
+  if (!parts.length) {
+    return isUnique
+      ? "ORDER BY c.name ASC"
+      : "ORDER BY c.name ASC, c.released_at DESC";
+  }
+  return `ORDER BY ${parts.join(", ")}`;
 }
 
 // ── Query builder ────────────────────────────────────────────────────────────
@@ -257,12 +297,16 @@ export function buildQuery(opts: SearchOptions): {
   const offset = Math.max(0, parseInt(opts.offset || "0") || 0);
   params.push(limit, offset);
 
+  const userSorts = [
+    { key: opts.sort1, dir: opts.sort1Dir },
+    { key: opts.sort2, dir: opts.sort2Dir },
+    { key: opts.sort3, dir: opts.sort3Dir },
+  ];
+
   let sql: string;
 
   if (opts.unique) {
-    // One row per card name.
-    // owned_sets_json: JSON array of { label, img } per owned printing so the
-    // UI can render clickable edition badges that open the right card image.
+    const orderBy = buildOrderBy(userSorts, true);
     sql = `
       SELECT
         c.name,
@@ -300,10 +344,11 @@ export function buildQuery(opts: SearchOptions): {
       LEFT JOIN inventory inv ON inv.scryfall_id = c.id
       ${where}
       GROUP BY c.name
-      ORDER BY c.name
+      ${orderBy}
       LIMIT ? OFFSET ?
     `;
   } else {
+    const orderBy = buildOrderBy(userSorts, false);
     sql = `
       SELECT
         c.name, c.set_code, c.collector_number,
@@ -315,7 +360,7 @@ export function buildQuery(opts: SearchOptions): {
       FROM cards c
       LEFT JOIN inventory inv ON inv.scryfall_id = c.id
       ${where}
-      ORDER BY c.name, c.released_at DESC
+      ${orderBy}
       LIMIT ? OFFSET ?
     `;
   }

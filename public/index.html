@@ -196,6 +196,41 @@
     .inline-row .field input,
     .inline-row .field select { width: 100%; }
 
+    /* ── Sort controls ─────────────────────────────────────────────────────── */
+    .sort-section {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      padding-top: 10px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .sort-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 180px;
+    }
+    .sort-group > label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #888;
+      margin-bottom: 0;
+    }
+    .sort-inputs { display: flex; gap: 4px; }
+    .sort-inputs select:first-child { flex: 1; min-width: 0; }
+    .sort-inputs .dir-sel { width: 76px; flex-shrink: 0; }
+    .sort-note {
+      width: 100%;
+      font-size: 0.72rem;
+      color: #aaa;
+      margin: 2px 0 0;
+    }
+
     /* ── Form actions ──────────────────────────────────────────────────────── */
     .form-actions {
       grid-column: 1 / -1;
@@ -678,8 +713,8 @@
           <span class="color-row-label">Any of</span>
           <div class="color-btn-group">
             <button type="button" class="color-btn" data-color="W">W</button>
-            <button type="button" class="color-btn" data-color="U">U</button>
-            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="U">Bl</button>
+            <button type="button" class="color-btn" data-color="B">Bk</button>
             <button type="button" class="color-btn" data-color="R">R</button>
             <button type="button" class="color-btn" data-color="G">G</button>
             <button type="button" class="color-btn" data-color="C">C</button>
@@ -691,8 +726,8 @@
           <span class="color-row-label">All of</span>
           <div class="color-btn-group">
             <button type="button" class="color-btn" data-color="W">W</button>
-            <button type="button" class="color-btn" data-color="U">U</button>
-            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="U">Bl</button>
+            <button type="button" class="color-btn" data-color="B">Bk</button>
             <button type="button" class="color-btn" data-color="R">R</button>
             <button type="button" class="color-btn" data-color="G">G</button>
             <button type="button" class="color-btn" data-color="C">C</button>
@@ -704,8 +739,8 @@
           <span class="color-row-label">Exclude</span>
           <div class="color-btn-group">
             <button type="button" class="color-btn" data-color="W">W</button>
-            <button type="button" class="color-btn" data-color="U">U</button>
-            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="U">Bl</button>
+            <button type="button" class="color-btn" data-color="B">Bk</button>
             <button type="button" class="color-btn" data-color="R">R</button>
             <button type="button" class="color-btn" data-color="G">G</button>
             <button type="button" class="color-btn" data-color="C">C</button>
@@ -722,8 +757,8 @@
           <span class="color-row-label">Any of</span>
           <div class="color-btn-group">
             <button type="button" class="color-btn" data-color="W">W</button>
-            <button type="button" class="color-btn" data-color="U">U</button>
-            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="U">Bl</button>
+            <button type="button" class="color-btn" data-color="B">Bk</button>
             <button type="button" class="color-btn" data-color="R">R</button>
             <button type="button" class="color-btn" data-color="G">G</button>
             <button type="button" class="color-btn" data-color="C">C</button>
@@ -735,8 +770,8 @@
           <span class="color-row-label">Exclude</span>
           <div class="color-btn-group">
             <button type="button" class="color-btn" data-color="W">W</button>
-            <button type="button" class="color-btn" data-color="U">U</button>
-            <button type="button" class="color-btn" data-color="B">B</button>
+            <button type="button" class="color-btn" data-color="U">Bl</button>
+            <button type="button" class="color-btn" data-color="B">Bk</button>
             <button type="button" class="color-btn" data-color="R">R</button>
             <button type="button" class="color-btn" data-color="G">G</button>
             <button type="button" class="color-btn" data-color="C">C</button>
@@ -855,6 +890,76 @@
             <option value="200">200</option>
           </select>
         </div>
+      </div>
+
+      <!-- ── Sort ─────────────────────────────────────────────────────── -->
+      <div class="sort-section">
+        <div class="sort-group">
+          <label>Sort by</label>
+          <div class="sort-inputs">
+            <select name="sort1" id="f-sort1">
+              <option value="name" selected>Name</option>
+              <option value="cmc">Mana Cost (CMC)</option>
+              <option value="type">Type</option>
+              <option value="color">Color</option>
+              <option value="rarity">Rarity</option>
+              <option value="set">Set / Edition</option>
+              <option value="price">Price †</option>
+              <option value="quantity">Qty Owned</option>
+              <option value="power">Power</option>
+              <option value="toughness">Toughness</option>
+            </select>
+            <select name="sort1-dir" class="dir-sel">
+              <option value="asc">↑ Asc</option>
+              <option value="desc">↓ Desc</option>
+            </select>
+          </div>
+        </div>
+        <div class="sort-group">
+          <label>Then by</label>
+          <div class="sort-inputs">
+            <select name="sort2" id="f-sort2">
+              <option value="">—</option>
+              <option value="name">Name</option>
+              <option value="cmc">Mana Cost (CMC)</option>
+              <option value="type">Type</option>
+              <option value="color">Color</option>
+              <option value="rarity">Rarity</option>
+              <option value="set">Set / Edition</option>
+              <option value="price">Price †</option>
+              <option value="quantity">Qty Owned</option>
+              <option value="power">Power</option>
+              <option value="toughness">Toughness</option>
+            </select>
+            <select name="sort2-dir" class="dir-sel">
+              <option value="asc">↑ Asc</option>
+              <option value="desc">↓ Desc</option>
+            </select>
+          </div>
+        </div>
+        <div class="sort-group">
+          <label>Then by</label>
+          <div class="sort-inputs">
+            <select name="sort3" id="f-sort3">
+              <option value="">—</option>
+              <option value="name">Name</option>
+              <option value="cmc">Mana Cost (CMC)</option>
+              <option value="type">Type</option>
+              <option value="color">Color</option>
+              <option value="rarity">Rarity</option>
+              <option value="set">Set / Edition</option>
+              <option value="price">Price †</option>
+              <option value="quantity">Qty Owned</option>
+              <option value="power">Power</option>
+              <option value="toughness">Toughness</option>
+            </select>
+            <select name="sort3-dir" class="dir-sel">
+              <option value="asc">↑ Asc</option>
+              <option value="desc">↓ Desc</option>
+            </select>
+          </div>
+        </div>
+        <p class="sort-note">† Price = value at time of last Scryfall import, not live market price</p>
       </div>
 
       <!-- ── Actions ───────────────────────────────────────────────────── -->
