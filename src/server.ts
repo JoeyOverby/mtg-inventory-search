@@ -51,6 +51,12 @@ function paramsToOptions(p: URLSearchParams): SearchOptions {
     unique:        p.get("unique") === "true",
     offset:        p.get("offset")        || "0",
     limit:         p.get("limit")         || "50",
+    sort1:         p.get("sort1")         || undefined,
+    sort1Dir:      p.get("sort1-dir")     || undefined,
+    sort2:         p.get("sort2")         || undefined,
+    sort2Dir:      p.get("sort2-dir")     || undefined,
+    sort3:         p.get("sort3")         || undefined,
+    sort3Dir:      p.get("sort3-dir")     || undefined,
   };
 }
 
