@@ -310,6 +310,7 @@ export function buildQuery(opts: SearchOptions): {
     sql = `
       SELECT
         c.name,
+        MIN(c.id)                                    AS scryfall_id,
         NULL                                         AS set_code,
         NULL                                         AS collector_number,
         MIN(c.mana_cost)                             AS mana_cost,
@@ -333,7 +334,8 @@ export function buildQuery(opts: SearchOptions): {
                THEN json_object(
                  'label', UPPER(c.set_code) || ' ×' || inv.quantity
                           || ' (' || COALESCE(inv.condition, '?') || ')',
-                 'img', COALESCE(c.image_normal, '')
+                 'img', COALESCE(c.image_normal, ''),
+                 'id', c.id
                )
                ELSE NULL END,
           ','
@@ -351,7 +353,7 @@ export function buildQuery(opts: SearchOptions): {
     const orderBy = buildOrderBy(userSorts, false);
     sql = `
       SELECT
-        c.name, c.set_code, c.collector_number,
+        c.name, c.id AS scryfall_id, c.set_code, c.collector_number,
         c.mana_cost, c.cmc, c.type_line, c.oracle_text,
         c.power, c.toughness, c.rarity, c.layout,
         c.colors_json, c.color_identity_json, c.keywords_json,

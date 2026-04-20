@@ -157,6 +157,50 @@ Checking **Group by name** collapses multiple printings of the same card into on
 
 Click any card result to see a full-size popup of the card image. In **Group by name** mode, each edition badge (e.g. "FDN ×2 (Mint)") is also clickable — clicking it opens the image for that specific printing rather than the default one.
 
+### Image caching
+
+The dark toolbar below the header controls local image caching. By default images load directly from Scryfall's CDN each time; enabling caching saves them to disk so they load instantly on subsequent views and work offline.
+
+| Control | Description |
+|---|---|
+| **Cache images** checkbox | Toggles caching on/off. Preference is saved across sessions. |
+| **Size selector** | Which sizes to cache: Both (~112 KB/card), Small only (~12 KB), or Normal only (~100 KB). Small = card thumbnails in results; Normal = full popup image. |
+| **Cache stats** | Live display of how many files are cached and total disk usage. |
+| **Clear small / Clear normal / Clear all** | Deletes the selected cache tier from disk immediately. |
+| **⬇ Download all owned** | Pre-caches every card in your inventory at once, in batches, with progress shown inline. Useful before going offline. |
+
+**Storage estimates:**
+
+| Scenario | Small (~12 KB/card) | Normal (~100 KB/card) | Both |
+|---|---|---|---|
+| All ~90k printings in DB | ~1.1 GB | ~9 GB | ~10 GB |
+| All owned cards (~2,000) | ~24 MB | ~200 MB | ~224 MB |
+| One 50-card results page | ~600 KB | ~5 MB | ~5.6 MB |
+
+On-demand caching (images save as you browse) is the most practical approach — storage grows gradually and stays well under 1 GB for a typical collection.
+
+**File naming:** Images are stored as `image_cache/small/{uuid}.jpg` and `image_cache/normal/{uuid}.jpg` using the Scryfall card UUID. If you have images downloaded from another tool that uses Scryfall UUIDs, drop them into the correct subfolder and the app will serve them without re-downloading. The `image_cache/` directory is gitignored.
+
+> **No official Scryfall bulk image download exists.** To pre-populate the cache manually, you can run a script against the DB: `SELECT id, image_normal FROM cards WHERE image_normal IS NOT NULL` gives all source URLs.
+
+### Sort
+
+Three-level sort controls appear at the bottom of the search form. Each level has a column dropdown and an Asc/Desc toggle.
+
+| Sort option | Description |
+|---|---|
+| Name | Alphabetical |
+| Mana Cost (CMC) | Numeric; X spells sort as 0 |
+| Type | Alphabetical on type line |
+| Color | By color bitmask — colorless → mono W/U/B/R/G → multicolor |
+| Rarity | Common → Uncommon → Rare → Mythic |
+| Set / Edition | By release date |
+| Price † | By price_usd at time of last Scryfall import |
+| Qty Owned | Most copies first when descending |
+| Power / Toughness | Numeric; `*` and `X` sort as 0 |
+
+† Price reflects the value recorded during the last `bun run import-cards`, not live market price.
+
 ### Debug panel
 
 Check **Show query** before searching to reveal the raw SQL and parameters the server generated. Useful for diagnosing unexpected results.
